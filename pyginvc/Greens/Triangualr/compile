@@ -1,0 +1,1 @@
+f2py -c nikkhoo15.f90 macros.f90 DispInHalfSpace.c StrainInHalfSpace.c -m nikkhoo15lib -L/usr/local/gfortran/lib

@@ -1,0 +1,12 @@
+# April 21 2016
+# we use DISMODEL's program okadaio.f to compute Green Function.
+# In order to call the function from python, it should be comiled.
+
+f2py -c okadaio.f -m okadaio
+
+# then the compiled file okada.so will be created in local dir
+# Add enviroment variables into ~/.bash_profile
+# Then source the ~/.bash_profile
+source ~/.bash_profile
+
+# So can import the okada into python, then call it in program

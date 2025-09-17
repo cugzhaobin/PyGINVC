@@ -1,0 +1,122 @@
+\documentclass[UTF8,a4paper]{report}
+
+\usepackage[round]{natbib}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{color}
+%\usepackage{authblk}
+%\usepackage{ctex}
+%\usepackage{subfigure}
+\linespread{1.6}
+\usepackage{geometry}
+\geometry{margin=1.0in,tmargin=0.5in}
+\setcounter{secnumdepth}{3}
+\usepackage{framed}
+
+
+% Begin document now.
+\begin{document}
+
+\pagestyle{empty}
+\begin{center}
+\Large\scshape PyUnicycle Manual
+\end{center}
+
+%\clearpage
+
+
+% Section: Introduction
+\chapter{Installation}
+\section{Pre-installation}
+\subsection{Numpy}
+conda install numpy
+
+\subsection{Scipy}
+conda install scipy
+
+\subsection{Matplotlib}
+conda install matplotlib
+
+\subsection{Pyproj}
+pip install pyproj
+
+\subsection{PyMC}
+pip install pymc
+
+\subsection{PyMC3}
+pip install pymc3
+
+\subsection{emcee}
+pip install emcee
+
+\subsection{corner}
+pip install corner
+
+\section{Compile Greens' Function Code}
+
+\chapter{Input Files}
+\section{Coseismic Slip Model}
+Afterslip is aseismic slip occurred on velocity-strengthening area by relieve coseismic stress increases. Therefore, coseismic slip model is needed to forward the stress-driven afterslip with prescribed frictional parameters. Both rectangular slip model and triangualr one can be imported into the PyUnicycle program.
+
+\subsection{FaultGeom Format}
+The format of \textit{faultgeom} is the same other softewares, such as PyGINV and PyNIF. The unit for fault width and depth is km, while the unit for slip on fault surface is mm.
+\begin{center}
+\boxed{\textcolor{blue}{\emph{Width, Depth, Dip, Lat1, Lon1, Lat2, Lon2, Strike-Slip, Dip-Slip, Tensile-Slip}}}
+\end{center}
+
+\begin{itemize}
+\item The definition of dip angle in the FaultGeom format is different from other program, such as EDCMP and RELAX. In general, the dip angle is 180 degree larger than that of EDCMP.
+\item The suffix of the file name must be \emph{.faultgeom}.
+\item When FaultGeom format is used, \emph{origin} should be assigned in the \emph{dict\_param}. The \emph{origin} is a list containing reference latitude and longitude([lat, lon]).
+\end{itemize}
+
+
+\subsection{Localized Format}
+Sometimes, localized coordinate system is used to define the coseismic slip distribution. In this case, the localized format should be used. By default, the unit of fault geometry (length, depth, coordinates) is m, unit for slip is m too. The strike angle, dip angle and rake angle is degree.
+\begin{center}
+\boxed{\textcolor{blue}{\emph{No, Slip, X1(N), X2(E), X3(U), Length, Width, Strike, Dip, Rake}}}
+\end{center}
+
+\begin{itemize}
+\item Downward is positive.
+\item The suffix of the file name must be \emph{.flt} 
+\end{itemize}
+
+\section{Receiver Fault File}
+Afterslip slip usually occurs in periphery of cosiesmic ruptures on the same fault surface. In order to obtain complete afterslip distribution, the area of the receiver fault should be larger than that of coseismic fault. Both the \emph{faultgeom} and \emph{flt} can be identified by the program. However, the file formats for coseismic slip model and receiver fault should be in agreement.
+
+
+\section{GPS Station Information}
+There are several types of GPS station information file can be identified by the software.
+\subsection{Simple Format}
+\begin{center}
+\boxed{\textcolor{blue}{\emph{Longitude, Latitude, Altitude, Site}}}
+\end{center}
+In this case, the software will attempt to read GPS position series according their site codes. For instance, if the site code is CHLM then the code will find observed time series file named CHLM.neu. The unit of altitude is m. In fact, the altitude is discarded in the software. Only horizontal location is used.
+
+\subsection{GMT Velocity Format}
+
+If the input file is in the format of GMT velocity and the column is 8, the software will not attempt to read position time series rather than cumulatived displacement in mm. 
+\begin{center}
+\boxed{\textcolor{blue}{\emph{Lon, Lat, $V_{e}$, $V_{n}$, $Sig_{ve}$, $Sig_{vn}$, $Cor_{en}$, Site}}}
+\end{center}
+
+In other case, if the extended GMT velocity format containing vertical component and the column is 10, the software will not attempt to read position time series in all three components. The unit of displacement is mm.
+\begin{center}
+\boxed{\textcolor{blue}{\emph{Lon, Lat, $V_{e}$, $V_{n}$, $Sig_{ve}$, $Sig_{vn}$, $Cor_{en}$, Site, Vu, $Sig_{vu}$}}}
+\end{center}
+
+\section{GPS Time Series}
+\begin{center}
+\boxed{\textcolor{blue}{\emph{decimal-year, North, East, Up, $Sig_{n}$, $Sig_{e}$, $Sig_{u}$}}}
+\end{center}
+The input GPS time series are stored in file with sufix .neu for each station. The time series is pure postseismic transient after correcting for secular velocities, offsets, and seasonal variations. The decimal year usually starts from 0.0, meaning immediately after the earthquake. The displacements in the three directions should also be zeros when the edcimal year is 0.0. The unit of displacement is meter.
+
+\chapter{Commands}
+\section{Input Parameters}
+\boxed{\textcolor{blue}{\emph{
+			Vo  : reference velocity (m/yr) \\
+			amb : frictional parameter (a-b)
+}}}
+ 
+\end{document}

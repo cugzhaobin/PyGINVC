@@ -1,0 +1,3 @@
+# Dec 26, 2017
+# calculate coulomb stress
+f2py -c cmbfix.f mscorr.f cmbopt.f roots3.f -L/usr/local/gfortran/lib/ -m pstress

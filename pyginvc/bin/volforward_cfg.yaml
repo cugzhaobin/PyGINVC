@@ -1,0 +1,55 @@
+####################################################################################
+#                             Parameters For Volcano                               #
+#----------------------------------------------------------------------------------#
+# volcanofile        : absolute path and file name for volcano                     #
+#                    : format: lat lon depth(km) volumn                            #
+####################################################################################
+dict_volcano:
+    volcanofile : ''
+
+####################################################################################
+#                          Parameters For Data                                     #
+#----------------------------------------------------------------------------------#
+# gfiletype          : choose GPS data format/type GMT2D/GMT3D/IOS2D/IOS3D         #
+# gpsfile            : absolute path and file name for GPS data, '' means no data  #
+#                    : GMT2D format: lon lat ve vn se sn cor site in mm            #
+#                    : GMT3D format: lon lat ve vn vu se sn su site in mm          #
+#                    : IOS2D format: lon lat ve vn se sn cor site in mm            #
+#                    : IOS3D format: lon lat ve vn se sn cor site vu su in mm      # 
+# levfile            : absolute path and file name for SAR data, '' means no data  #
+# sarfile            : absolute path and file name for Lev data, '' means no data  #
+#                    : INSAR format: lon lat los unit_e unit_n unit_u in mm        #
+####################################################################################
+dict_data:
+    gfiletype  : 'GMT2D'
+    gpsfile    : ''
+    sarfile    : ''
+    levfile    : ''
+
+####################################################################################
+#                          Parameters For Green Function                           #
+#----------------------------------------------------------------------------------#
+# nu                 : Possion ratio                                               #
+# greenfile          : green function file name. 'SAVE' means saving               #
+#                    : SAVE  --- save to greenfunc.h5, or not save                 #
+####################################################################################
+dict_green:
+    nu         : 0.25
+    greenfile  : 'SAVE'
+
+####################################################################################
+#                          Parameters For Data Weighting                           #
+#----------------------------------------------------------------------------------#
+# wsar               : weight for InSAR data                                       #
+# wgps               : weight for GPS   data                                       #
+# wlev               : weight for Level data                                       #
+####################################################################################
+dict_weight:
+    wgps        : [1]
+    wsar        : [1]
+    wlev        : [1]
+
+dict_export:
+    view        : True
+    outpath     : './new'
+    vecscale    : 5000

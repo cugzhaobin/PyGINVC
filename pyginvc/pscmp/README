@@ -1,0 +1,1 @@
+f2py -c pscmain.f disazi.f pscgrn.f getdata.f pscdisc.f pscokada.f dc3d.f -m pscmain

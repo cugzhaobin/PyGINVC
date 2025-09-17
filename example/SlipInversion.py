@@ -1,0 +1,188 @@
+#!/usr/bin/env python
+# Kinematic Fault Source Inversion Program version 1.0
+# This program is based on DISMODEL of Roland Burgmann
+# Written By Zhao Bin, Institute of Seismology, CEA @ UC Berkeley
+#
+# Feb. 21 2016
+# Mod by Zhao Bin, Mar  7 2016, added green function compulation
+# Mod by Zhao Bin, Dec  7 2018, show figures after inversion
+# Mod by Zhao Bin, Dec 15 2018, we now use dict as input parameters for inversion
+
+
+from GeoData.GeoData import GeoData
+from Geometry.Fault import Fault
+from Greens.Okada import Okada
+from Laplacian.RectPlaneLap import RectPlaneLap
+from Inversion.GeoInversion import GeoInversion
+from Export.Output import Output
+from Export import View as view
+
+class SlipInversion:
+    '''
+    '''
+
+    def __init__(self, dict_fault, dict_data, dict_green, dict_weight, dict_bound ):
+        #
+        # GeoData
+        #
+        gpsfile = dict_data['gpsfile']
+        sarfile = dict_data['sarfile']
+        levfile = dict_data['levfile']
+        gfiletype = dict_data['gfiletype']
+        self.data = GeoData(gpsfile, sarfile, levfile, gfiletype)
+        print self.data.W
+        print self.data.Icov_gps
+    
+        #
+        # Fault
+        #
+        faultfile = dict_fault['faultfile']
+        nsegs     = dict_fault['nsegs']
+        ndeps     = dict_fault['ndeps']
+        doSubFault= dict_fault['doSubFault']
+        self.flt  = Fault(faultfile, nsegs, ndeps, doSubFault, origin=[])
+
+        #
+        # GreenFunction
+        self.green = Okada(self.flt, self.data, dict_green)
+        
+        #
+        # Laplacian
+        #
+        bcs        = dict_green['bcs']
+        self.lap   = RectPlaneLap(self.flt.nsegs, self.flt.ndeps, bcs)
+
+        #
+        # Inversion
+        #
+        sol        = GeoInversion(self.flt, self.data, self.green, self.lap, dict_weight, dict_bound)
+
+        # 
+        # Output
+        #
+        Output(sol, 'rectangular')
+
+        return
+
+if __name__ == '__main__':
+
+	####################################################################################
+	#                            Geodetic Inversion Python                             #
+	#                              Set Global Parameters                               #
+	####################################################################################
+	#                             Parameters For Fault                                 #
+	#----------------------------------------------------------------------------------#
+	# nflts              : numbrt of faults                                            #
+	# faultfile          : absolute path and file name for GPS data. It must exit.     #
+	#                    : format: wid dep dip lat1 lon1 lat2 lon2 ss ds op in mm      #
+	#                    : ss>0 right-lateral slip | ss<0 left-lateral slip            #
+	#                    : ds>0 inverse slip       | ds<0 normal slip                  #
+	# nsegs              : numbrt of patches along fault strike angle                  #
+	# ndeps              : numbrt of patches along fault dip angle                     #
+	####################################################################################
+	dict_fault = {'faultfile'  : './fault/FaultGeom',
+	              'doSubFault' : True,
+	              'nsegs'      : 10,
+	              'ndeps'      : 10
+	             }
+	####################################################################################
+	#                          Parameters For Data                                     #
+	#----------------------------------------------------------------------------------#
+	# gfiletype          : choose GPS data format/type GMT2D or GMT3D                  #
+	# gpsfile            : absolute path and file name for GPS data, '' means no data  #
+	#                    : GMT2D format: lon lat ve vn se sn cor site in mm            #
+	#                    : GMT3D format: lon lat ve vn vu se sn su site in mm          #
+	# levfile            : absolute path and file name for SAR data, '' means no data  #
+	# sarfile            : absolute path and file name for Lev data, '' means no data  #
+	#                    : INSAR format: lon lat los unit_e unit_n unit_u in mm        #
+	####################################################################################
+	dict_data  = {'gfiletype'  : 'IOS2D',
+	              'gpsfile'    : './data/gorkha_1yr.gmtvec',
+	              'levfile'    : '',
+	              'sarfile'    : ''
+	              }
+	####################################################################################
+	#                          Parameters For Green Function                           #
+	#----------------------------------------------------------------------------------#
+	# greentype          : [0,1,0] means compute GF for strike dip open slip           #
+	# nu                 : Possion ratio                                               #
+	# bcs                : [0,0,0,0] means no slip at the four edges                   #
+	#                    : top, bottom, end-side, start-side                           #
+	# greenmethod        : rectokada  --- classic homogenerous model                   #
+	#                    : triokada   --- triangular model                             #
+	#                    : layerwang  --- R. J. Wang's layered model                   #
+	# greenfile          : green function file name. 'SAVE' means saving               #
+	#                    : SAVE  --- save to greenfunc.pkl, or not save                #
+	####################################################################################
+	dict_green  = {'greentype'  : [0, 1, 0],
+	               'nu'         : 0.25,
+	               'bcs'        : [0,0,0,0],
+	               'greenmethod': 'rectokada',
+	               'greenfile'  : 'SAVE'
+	               }
+	####################################################################################
+	#                          Parameters For Smoothing                                #
+	#----------------------------------------------------------------------------------#
+	# smoothfactor       : first S.M.F, end S.M.F and step                             #
+	####################################################################################
+	#                          Parameters For Data Weighting                           #
+	#----------------------------------------------------------------------------------#
+	# wsar               : weight for InSAR data                                       #
+	# wgps               : weight for GPS   data                                       #
+	# wlev               : weight for Level data                                       #
+	####################################################################################
+	dict_weight = {'smoothfactor'  : [0.1, 0.11, 0.1],
+	               'wgps'          : [1.0],
+	               'wsar'          : [1.0],
+	               'wlev'          : [1.0]
+	               } 
+	####################################################################################
+	#                          Parameters For bounding                                 #
+	#----------------------------------------------------------------------------------#
+	# bound_switch       : True/False                                                  #
+	# ss_range           : constrain range for strike slip                             #
+	# ds_range           : constrain range for dip    slip                             #
+	# op_range           : constrain range for opening slip                            #
+	# s_ss_range         : surface relative variance range for strike slip             #
+	# s_ds_range         : surface relative variance range for dip slip                #
+	# s_op_range         : surface relative variance range for open slip               #
+	# b_ss_range         : bottom  relative variance range for strike slip             #
+	# b_ds_range         : bottom  relative variance range for dip slip                #
+	# b_op_range         : bottom  relative variance range for open slip               #
+	# surf_slip          : constrained surface slip for nsegs patches                  #
+	# bot_slip           : constrained bottom  slip for nsegs patches                  #
+	# sar_plane_range    : constrained SAR parameters                                  #
+	# slip_lb            : lower bound of slip in FaultGoem foramt                     #
+	# slip_ub            : upper bound of slip in FaultGoem foramt                     #
+	####################################################################################
+	dict_bound  = {'bound_switch'    : True,
+	               'ss_range'        : [0, 0.01],
+	               'ds_range'        : [0, 1200],
+	               'op_range'        : [0, 0.01],
+	#              's_ss_range'      : [],
+	#              's_ds_range'      : [],
+	#              's_op_range'      : [],
+	#              'b_ss_range'      : [],
+	#              'b_ds_range'      : [],
+	#              'b_op_range'      : [],
+	#              'surf_slip'       : [],
+	#              'bot_slip'        : [],
+	               'sar_plane_range' : [],
+	               'slip_lb'         : "",
+	               'slip_ub'         : ""
+	               }
+	####################################################################################
+	
+	
+	SlipInversion(dict_fault, dict_data, dict_green, dict_weight, dict_bound)
+	
+	import os 
+	objdir = '1yr_2d'
+	if os.path.isdir(objdir) is False:
+	    os.mkdir(objdir)
+	os.popen('mv *gmtlin '+objdir)
+#	os.popen('mv *gmtvec '+objdir)
+	os.popen('mv *h5     '+objdir)
+	os.popen('mv FaultGeom_* '+objdir)
+	view.plot_obs_mod(objdir+'/solutions.h5', scale=1000)
+	view.plot_slip_3d(objdir+'/solutions.h5')

@@ -1,0 +1,91 @@
+####################################################################################
+#                             Parameters For Fault                                 #
+#----------------------------------------------------------------------------------#
+# nflts              : numbrt of faults                                            #
+# faultfile          : absolute path and file name for GPS data. It must exit.     #
+#                    : format: wid dep dip lat1 lon1 lat2 lon2 ss ds op in mm      #
+#                    : ss>0 right-lateral slip | ss<0 left-lateral slip            #
+#                    : ds>0 inverse slip       | ds<0 normal slip                  #
+# nsegs              : numbrt of patches along fault strike angle                  #
+# ndeps              : numbrt of patches along fault dip angle                     #
+####################################################################################
+dict_fault:
+    faultfile  : './faultgeom_piecewise'
+    faultbound : 'bound.faultgeom'
+    doSubFault : False
+    nsegs      : 1
+    ndeps      : 1
+
+####################################################################################
+#                          Parameters For Data                                     #
+#----------------------------------------------------------------------------------#
+# gfiletype          : choose GPS data format/type GMT2D/GMT3D/IOS2D/IOS3D         #
+# gpsfile            : absolute path and file name for GPS data, '' means no data  #
+#                    : GMT2D format: lon lat ve vn se sn cor site in mm            #
+#                    : GMT3D format: lon lat ve vn vu se sn su site in mm          #
+#                    : IOS2D format: lon lat ve vn se sn cor site vu su in mm      #
+#                    : IOS3D format: lon lat ve vn se sn cor site vu su in mm      # 
+# levfile            : absolute path and file name for SAR data, '' means no data  #
+# sarfile            : absolute path and file name for Lev data, '' means no data  #
+#                    : INSAR format: lon lat los unit_e unit_n unit_u in mm        #
+####################################################################################
+dict_data:
+    gfiletype  : 'GMT3D'
+    gpsfile    : ''
+    levfile    : ''
+    sarfile    : ''
+
+####################################################################################
+#                          Parameters For Green Function                           #
+#----------------------------------------------------------------------------------#
+# greentype          : [0,1,0] means compute GF for strike dip open slip           #
+# nu                 : Possion ratio                                               #
+# bcs                : [0,0,0,0] means no slip at the four edges                   #
+#                    : top, bottom, end-side, start-side                           #
+# grnmethod          : okada      --- classic homogenerous model                   #
+#                    : wang       --- R. J. Wang's layered model                   #
+# greenfile          : green function file name. 'SAVE' means saving               #
+#                    : SAVE  --- save to greenfunc.pkl, or not save                #
+####################################################################################
+dict_green:
+    greentype   : [1, 1, 0]
+    nu          : 0.25
+    bcs         : [0,0,0,0]
+    grnmethod   : 'okada'
+    greenfile   : 'SAVE'
+    modulus     : 3e10
+
+####################################################################################
+#                          Parameters For Smoothing                                #
+#----------------------------------------------------------------------------------#
+# smoothfactor       : first S.M.F, end S.M.F and step                             #
+####################################################################################
+#                          Parameters For Data Weighting                           #
+#----------------------------------------------------------------------------------#
+# wsar               : weight for InSAR data                                       #
+# wgps               : weight for GPS   data                                       #
+# wlev               : weight for Level data                                       #
+####################################################################################
+dict_weight:
+    smoothfactor  : [0.1, 0.31, 0.1]
+    wgps          : [1.0]
+    wsar          : [1.0]
+    sigma         : 10
+    lamda         : None
+    wlev          : [1.0]
+
+####################################################################################
+#                          Parameters For Bayesian Inversion                       #
+#----------------------------------------------------------------------------------#
+# nstep              : total number of samples                                     #
+# nburn              : number of burning                                           #
+# mpi                : True/False                                                  #
+# method             : emcee or diff                                               #
+####################################################################################
+dict_param:
+    nsteps        : 40000
+    nburn         : 20000
+    ss            : [0,1000]
+    ds            : [0,2000]
+    mpi           : False
+    method        : emcee

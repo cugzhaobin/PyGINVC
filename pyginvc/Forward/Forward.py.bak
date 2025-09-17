@@ -1,0 +1,101 @@
+#!/usr/bin/python
+# Written by Zhao Bin, at UC Berkeley. April 22 2016
+
+
+
+def run_forward(faultfile, gpsfile, sarfile, levfile, gfiletype, greentype, nu, wsar):
+    '''
+    '''
+    
+    import Fault as flt
+    import GreenFunction as gf
+    import LoadData
+
+    # load the slip model    
+    geom = flt.LoadFaultGeom(faultfile)
+    [dis_geom_grid, origin] = flt.SetOrigin(geom)
+    nf = len(geom)
+    [geom_grid] = flt.disgeom2geom(dis_geom_grid, nf, origin)
+    
+    # load different kinds of data
+    [llh_gps, llh_lev, llh_sar, d_gps, d_lev, d_sar, unit, W] = LoadData.LoadAllData(gpsfile, sarfile, levfile, gfiletype, origin)
+
+    if gfiletype == "GMT2D":
+        ndim = 2
+    if gfiletype == "GMT3D":
+        ndim = 3
+    
+    # compute green function
+    [G, G_sar] = gf.GenGreen(llh_gps, llh_lev, llh_sar, unit, origin, dis_geom_grid, greentype, nu, ndim)
+    
+    forward(llh_gps, llh_lev, llh_sar, D, d_gps, d_lev, d_sar, W, wsar, G, G_sar, dis_geom_grid, ndim)
+
+
+def forward(llh_gps, llh_lev, llh_sar, d_gps, d_lev, d_sar, W, wsar, G, G_sar, dis_geom_grid, ndim):
+    from numpy import hstack, vstack, zeros, rank, array
+    
+    slip = dis_geom_grid[:,7:10]
+    len_gps   = len(d_gps)
+    len_lev   = len(d_lev)
+    len_geod  = len_gps + len_lev
+    len_sar   = len(d_sar)
+    len_all   = len_geod+len_sar
+    r         = zeros(len_all)
+    D         = hstack((d_gps, d_lev)); 
+    
+    if len_sar > 0:
+        dhat    = vstack(G, G_sar)*slip
+        D       = vstack(D, d_sar)
+
+        r[len_geod:len_all] = D[len_geod:len_all] - dhat[len_geod:len_all]
+        r_sar               = r[len_geod:len_all]
+        rank_sar            = rank(G_sar)
+        wrss_sar            = wsar*r_sar.dot(war*r_sar)
+        print 'Goodness of fit: SAR'
+        print 'SAR:   Weighted Residual Sum of Squares (WRSS), %g' %(wrss_sar)
+        print 'SAR:   WRSS / (N-P),         %g' %(wrss_sar/(len_sar-rank_sar))
+        print 'SAR:   WRSS / (N),         %g'   %(wrss_sar/len_sar)       
+    else:
+        dhat = G*slip   
+        
+
+    r_gps  = zeros(len_gps)
+    if len_geod > 0:
+        r[0:len_geod] = W*[d[0:len_geod] - dhat[0:len_geod]
+#
+##      r_gps    = r[0:len_geod]
+#       rank_gps = rank(G[0:len_gps,:])
+#       print 'GOODNESS OF FIT:  GPS'
+#       print 'GPS:   Weighted Residual Sum of Squares (WRSS), %f' %(r_gps.dot(r_gps))
+#       print 'GPS:   WRSS / (N-P),         %f' %(r_gps.dot(r_gps)/(len_gps-rank_gps))
+#       print 'GPS:   WRSS / (N),           %f' %(r_gps.dot(r_gps)/(n_gps))
+    else:
+        print 'ok'
+
+
+
+    if len_gps < 1:
+        nvec = len_gps*3
+        if ndim == 2:
+            u_pre = zeros((2,nvec))
+            for i in range(0, nvec):
+                u_pre[:,i]  = dhat[ 2*i: 2*i+2 ]
+            outmatrix = array([llh_gps[2,0:nvec], llh_gps[1,0:nvec],  u_pre[0,:],  u_pre[1,:]])
+
+        if ndim == 3:
+            u_pre = zeros((3,nvec))
+            for i in range(0,nvec):
+                u_pre[:,i]  = dhat[ 3*i: 3*i+3]
+            outmatrix = array([llh_gps[2,0:nvec], llh_gps[1,0:nvec],  u_pre[0,:],  u_pre[1,:]])
+            print outmatrix
+
+
+    # INSAR DATA
+#   if len_sar > 0:
+#       outmatrix3 =  [llh_sar[2,:], llh_SAR[1,:],  dhat[len_geod:len_all]
+        #save sarmod.xyz outmatrix3 -ascii
+  
+    # LEV Data
+
+#   if len_lev > 0:
+#       print 'Not finished'

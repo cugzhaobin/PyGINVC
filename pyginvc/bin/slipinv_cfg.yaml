@@ -1,0 +1,105 @@
+####################################################################################
+#                             Parameters For Fault                                 #
+#----------------------------------------------------------------------------------#
+# faultfile          : absolute path and file name for GPS data. It must exits.    #
+#                    : format: wid dep dip lat1 lon1 lat2 lon2 ss ds op in mm      #
+#                    : ss>0 right-lateral slip | ss<0 left-lateral slip            #
+#                    : ds>0 inverse slip       | ds<0 normal slip                  #
+# nsegs              : numbrt of patches along fault strike direction              #
+# ndeps              : numbrt of patches along fault dip direction                 #
+####################################################################################
+dict_fault:
+    faultfile  : ''
+    doSubFault : True
+    nsegs      : 30
+    ndeps      : 20
+
+####################################################################################
+#                          Parameters For Data                                     #
+#----------------------------------------------------------------------------------#
+# gfiletype          : choose GPS data format/type GMT2D/GMT3D/IOS2D/IOS3D         #
+# gpsfile            : absolute path and file name for GPS data, '' means no data  #
+#                    : GMT2D format: lon lat ve vn se sn cor site in mm            #
+#                    : GMT3D format: lon lat ve vn vu se sn su site in mm          #
+#                    : IOS2D format: lon lat ve vn se sn cor site in mm            #
+#                    : IOS3D format: lon lat ve vn se sn cor site vu su in mm      # 
+# levfile            : absolute path and file name for Lev data, '' means no data  #
+# sarfile            : absolute path and file name for SAR data, '' means no data  #
+#                    : INSAR format: lon lat los unit_e unit_n unit_u in mm        #
+####################################################################################
+dict_data:
+    gfiletype  : 'GMT2D'
+    gpsfile    : ''
+    sarfile    : ''
+    levfile    : ''
+
+####################################################################################
+#                          Parameters For Green Function                           #
+#----------------------------------------------------------------------------------#
+# greentype          : [0,1,0] means to compute GF for strike dip open component   #
+# nu                 : Possion ratio                                               #
+# modulus            : shear modulus, default is 30 GPa                            #
+# bcs                : [0,0,0,0] means no slip at the four edges                   #
+#                    : top, bottom, end-side, start-side                           #
+# grnmethod          : okada      --- classic homogenerous model                   #
+#                    : wang       --- R. J. Wang's layered model                   #
+# greenfile          : green function file name. 'SAVE' means saving               #
+#                    : SAVE  --- save to greenfunc.h5, or not save                 #
+####################################################################################
+dict_green:
+    greentype  : [1, 0, 0]
+    nu         : 0.25
+    modulus    : 3e10
+    bcs        : [0,0,0,0]
+    grnmethod  : 'okada'
+    greenfile  : 'SAVE'
+
+####################################################################################
+#                          Parameters For Smoothing                                #
+#----------------------------------------------------------------------------------#
+# smoothfactor       : first S.M.F, end S.M.F and step                             #
+####################################################################################
+#                          Parameters For Data Weighting                           #
+#----------------------------------------------------------------------------------#
+# wsar               : weight for InSAR data                                       #
+# wgps               : weight for GPS   data                                       #
+# wlev               : weight for Level data                                       #
+####################################################################################
+dict_weight:
+    smoothfactor: [0.1, 0.5, 0.1]
+    wgps        : [1]
+    wsar        : [1]
+    wlev        : [1]
+
+####################################################################################
+#                          Parameters For bounding                                 #
+#----------------------------------------------------------------------------------#
+# bound_switch       : True/False                                                  #
+# ss_range           : constrain range for strike slip                             #
+# ds_range           : constrain range for dip    slip                             #
+# op_range           : constrain range for opening slip                            #
+# s_ss_range         : surface relative variance range for strike slip             #
+# s_ds_range         : surface relative variance range for dip slip                #
+# s_op_range         : surface relative variance range for open slip               #
+# b_ss_range         : bottom  relative variance range for strike slip             #
+# b_ds_range         : bottom  relative variance range for dip slip                #
+# b_op_range         : bottom  relative variance range for open slip               #
+# surf_slip          : constrained surface slip for nsegs patches                  #
+# bot_slip           : constrained bottom  slip for nsegs patches                  #
+# sar_plane_range    : constrained SAR parameters                                  #
+# slip_lb            : lower bound of slip in FaultGoem foramt                     #
+# slip_ub            : upper bound of slip in FaultGoem foramt                     #
+####################################################################################
+dict_bound:
+    bound_switch: True
+    ss_range    : [-100, 100]
+    ds_range    : [0, 2000]
+    op_range    : [0, 0.01]
+    slip_lb     : ""
+    slip_ub     : ""
+    sar_plane_range: []
+
+dict_export:
+    view        : True
+    outpath     : './new'
+    vecscale    : 5000
