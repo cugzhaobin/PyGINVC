@@ -624,13 +624,8 @@ class Fault(object):
         with open('edcmp.fault', 'w') as fid:
             fid.write("# origin: {:10.4f} {:10.4f} ".format(self.origin[0], self.origin[1]))
             for i in range(self.nf):
-                # strike angle of the fault                
-                strik = self.strike[i]
-                if strik < 0:  strik = strik+360
-    
-                # dip angle of the fault
-                dip = self.dip[i]
-                if dip > 180:  dip = dip-180
+                strik = self.strike[i] % 360
+                dip   = self.dip[i] % 360
       
                 # total slip, convert mm in FautlGeom to m in EDCMP
                 slip  = self.ts/1e3
@@ -776,14 +771,16 @@ class Fault(object):
         start_time = 0
         
         for i in range(self.nf):
+            strik = self.strike[i] % 360
+            dip   = self.dip[i] % 180
             print("%5d %10.3f %10.3f %10.3f %10.3f %10.3f %10.3f %10.3f %5d %5d %5d"
                 %(n, self.top_left_llh[i,1],
                      self.top_left_llh[i,0],
-                     self.top_left_llh[i,2],
+                    -self.top_left_llh[i,2],
                      self.length[i],
                      self.width[i],
-                     self.strike[i],
-                     self.dip[i],
+                     stirk,
+                     dip,
                      np_st, np_di, start_time))
             print("     %10.3f %10.3f %10.3f %10.3f %10.3f" 
                 %(self.length[i]/2.0, self.width[i]/2,
