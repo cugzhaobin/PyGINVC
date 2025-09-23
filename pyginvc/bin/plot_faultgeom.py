@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse, os
 import matplotlib
-from pyginvc.Geometry.Fault import Fault
+from pyginvc.Geometry.Patch import Fault
 
 
 # Custom colormap
@@ -91,7 +91,7 @@ def main(args):
     showtext  = args.showindex
     azim      = args.azimuth
     elev      = args.elevation
-
+    """
     # Load fault data
     felem = load_fault_data(faultfile)
     slip  = felem[:, 7] / felem[:, 7].max()
@@ -164,7 +164,12 @@ def main(args):
     if args.savefig == True:
         plt.savefig('slip.pdf', format='pdf', bbox_inches='tight')
         plt.savefig('slip.jpg', format='jpg', dpi=600)
-    plt.show()
+    plt.show()"""
+    geom  = np.genfromtxt(faultfile)
+    nelem = len(geom)
+    flt   = Fault(faultfile, nelem, 1, False)
+    flt.plot_faultgeom()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Plot 3D slip distribution.")
