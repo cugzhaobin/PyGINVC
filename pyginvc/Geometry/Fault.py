@@ -625,7 +625,7 @@ class Fault(object):
             fid.write("# origin: {:10.4f} {:10.4f} ".format(self.origin[0], self.origin[1]))
             for i in range(self.nf):
                 strik = self.strike[i] % 360
-                dip   = self.dip[i] % 360
+                dip   = self.dip[i] % 180
       
                 # total slip, convert mm in FautlGeom to m in EDCMP
                 slip  = self.ts/1e3

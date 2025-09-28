@@ -1012,7 +1012,7 @@ class Fault(object):
             logging.info('Output a new faultgeom file.')
         else:
             if self.nf == len(slip):
-                out = np.column_stack((self.geom_grid[:,0:7], slip))
+                out = np.column_stack((self.geom_grid[:,0:7], slip*scale))
                 np.savetxt('output.faultgeom', out, fmt=fmt, header=header)
                 logging.info('Output a new faultgeom file.')
         return

@@ -36,9 +36,10 @@ class SlipInversion:
             lines    = fid.read()
             cfg      = yaml.load(lines, Loader=yaml.FullLoader)
             self.cfg = cfg
-            self.cfg['dict_data']['sarfile']   = args.sarfile if args.sarfile != "" else ""
-            self.cfg['dict_data']['gpsfile']   = args.gpsfile if args.gpsfile != "" else ""
-            self.cfg['dict_data']['lapmethod'] = args.lapmethod if args.lapmethod != "" else "2"
+            if args.sarfile is not None: self.cfg['dict_data']['sarfile']   = args.sarfile
+            if args.gpsfile is not None: self.cfg['dict_data']['gpsfile']   = args.gpsfile
+            if args.lapmethod is not None: self.cfg['dict_data']['lapmethod'] = args.lapmethod
+            if args.outpath is not None: self.cfg['dict_data']['outpath']   = args.outpath
         return
 
 
@@ -130,10 +131,10 @@ class SlipInversion:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Invert slip distribution on triangular patches from geodetic data.")
     parser.add_argument('--cfgfile', type=str, required=True, help='')
-    parser.add_argument('--sarfile', type=str, required=False, help='')
-    parser.add_argument('--gpsfile', type=str, required=False, help='')
-    parser.add_argument('--lapmethod', type=str, required=False, help='')
-    parser.add_argument('--outpath', type=str, required=False, help='')
+    parser.add_argument('--sarfile', type=str, default=None, required=False, help='InSAR data')
+    parser.add_argument('--gpsfile', type=str, default=None, required=False, help='GPS data')
+    parser.add_argument('--lapmethod', type=str, default=None, required=False, help='1/2/3')
+    parser.add_argument('--outpath', type=str, default=None, required=False, help='')
 
     args    = parser.parse_args()
     slipinv = SlipInversion(args)
