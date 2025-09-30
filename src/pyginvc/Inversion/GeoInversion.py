@@ -3,9 +3,11 @@
 # Mod by Zhao Bin, Dec. 7, 2018. We use print() now.
 # Mod by Zhao Bin, Dec. 7, 2018. We use HDF5 to store solutions
 
+import logging
 import numpy as np
 from scipy import optimize
-import logging
+from numpy import array, genfromtxt, remainder, zeros
+from numpy import vstack, hstack, arange, sqrt, diag, sum
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -46,7 +48,6 @@ class GeoInversion(object):
         Invert for slip model
         Mod by Zhao Bin, Mar 14, 2020. Rescale W with wgps
         '''
-        from numpy import vstack, hstack, zeros, arange, sqrt, diag, sum
 
         d_gps         = self.data.d_gps
         d_lev         = self.data.d_lev
@@ -302,7 +303,6 @@ class GeoInversion(object):
             bu          = upper bound of parameter
             bl          = lower bound of parameter
         '''            
-        from numpy import array, genfromtxt, remainder, zeros
     
         nelems    = 3*nsegs*ndeps
         if sar_switch == True:

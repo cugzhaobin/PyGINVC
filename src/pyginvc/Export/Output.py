@@ -1,7 +1,15 @@
 # Written by Zhao Bin, when he is at UC Berkeley. April 18 2016
 # Mod by Zhao Bin, Dec. 7, 2018. We use print() now.
 
-import logging
+import logging, h5py
+import os, time, glob
+import numpy as np
+from numpy import column_stack, mat, array, hstack, vstack, transpose, zeros
+from numpy import deg2rad, sin, cos, complex, exp, zeros, hstack, vstack, sqrt, diag
+from pyginvc.Geometry.Fault import Fault
+from pyginvc.Geometry.Triangle import Triangle
+from pyginvc.Forward.TriForward import TriForward
+
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -34,8 +42,6 @@ class Output(object):
         None.
 
         '''
-        from pyginvc.Geometry.Triangle import Triangle
-        from pyginvc.Geometry.Fault import Fault
 
         self.flt       = flt
         self.data      = data
@@ -59,8 +65,6 @@ class Output(object):
         None.
 
         '''
-        import h5py
-        from pyginvc.Forward.TriForward import TriForward
 
         # output hdf5 file
         with h5py.File('solutions.h5', 'w') as h5:
@@ -121,7 +125,6 @@ class Output(object):
 
         '''
 
-        import numpy as np
         
         if self.flt.nf*3 < self.sol.slip.shape[1]:
             slip = self.sol.slip[-1,:-3]
@@ -247,7 +250,6 @@ class Output(object):
         None.
 
         '''
-        import numpy as np
         
         slip = self.sol.slip
         if slip.ndim == 1:
@@ -349,14 +351,13 @@ class Output(object):
         Output:
             ruff_misfit: file
         """
-        from numpy import column_stack, savetxt
         
         if len(self.sol.smo_facts) < 3:
             logging.warning('Only %d smoothing factors.' % len(self.sol.smo_facts))
             return
         ruff_misfit = column_stack((self.sol.ruff, self.sol.misfit, self.sol.smo_facts, self.sol.moment))
         fname = 'ruff_misfit'
-        savetxt(fname, ruff_misfit, fmt='%10.2f\t%10.2f\t%10.4f\t%10.2e\t%10.2f')
+        np.savetxt(fname, ruff_misfit, fmt='%10.2f\t%10.2f\t%10.4f\t%10.2e\t%10.2f')
         logging.info('Roughness vs misfit is printed into ruff_misfit.')
         return
 	
@@ -364,7 +365,6 @@ class Output(object):
     def WriteSurfSlip(self):
         '''
         '''        
-        from numpy import zeros, transpose, vstack, savetxt
         
         geom_grid   = self.flt.geom_grid
         nsegs       = self.flt.nsegs
@@ -385,9 +385,9 @@ class Output(object):
         ds_surface_slip = transpose(vstack((patch, ds_slip[0:nsegs], ds_sig_slip[0:nsegs])))
         
         fname = 'surface_slip_ss.txt'
-        savetxt(fname, ss_surface_slip[0:3], fmt="%10.2f%10.2f%10.2f")
+        np.savetxt(fname, ss_surface_slip[0:3], fmt="%10.2f%10.2f%10.2f")
         fname = 'surface_slip_ds.txt'
-        savetxt(fname, ds_surface_slip[0:3], fmt="%10.2f%10.2f%10.2f")
+        np.savetxt(fname, ds_surface_slip[0:3], fmt="%10.2f%10.2f%10.2f")
         return
         
         
@@ -413,8 +413,6 @@ class Output(object):
 	        sar_res.gmtvec   -  residual SAR data
 	    '''
 	
-	    # import import libs
-        from numpy import zeros, hstack, vstack, savetxt, sqrt, diag
         
         if dhat is None or r is None:
             dhat = self.sol.dhat
@@ -457,16 +455,16 @@ class Output(object):
                     fmt  = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f"
                     null = zeros((nsta,1))
                     outmatrix = hstack((llh, obs, sig, null))
-                    savetxt("gps_obs.gmtvec", outmatrix, fmt=fmt)
+                    np.savetxt("gps_obs.gmtvec", outmatrix, fmt=fmt)
 
                     # modeled
                     null = zeros((nsta,3))
                     outmatrix = hstack((llh, mod, null))
-                    savetxt("gps_mod.gmtvec", outmatrix, fmt=fmt)
+                    np.savetxt("gps_mod.gmtvec", outmatrix, fmt=fmt)
 
                     # residual
                     outmatrix = hstack((llh, obs-mod, null))
-                    savetxt("gps_res.gmtvec", outmatrix, fmt=fmt)
+                    np.savetxt("gps_res.gmtvec", outmatrix, fmt=fmt)
             if self.data.ndim == 3:
                 mod  = dhat[0:nsta*3].reshape((nsta,3))
                 obs  = self.data.d_gps.reshape((nsta,3))
@@ -518,25 +516,25 @@ class Output(object):
                     fmt = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f"
                     fmt3 = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f"
                     outmatrix = hstack((llh, obs[:,0:2], sig[:,0:2], zeros((nsta,1))))
-                    savetxt("gps_obs.gmtvec", outmatrix, fmt=fmt)
+                    np.savetxt("gps_obs.gmtvec", outmatrix, fmt=fmt)
                     outmatrix = vstack((llh.T, zeros(nsta), obs[:,2], sig[:,2], zeros((2,nsta)))).T
-                    savetxt("gps_obs_up.gmtvec", outmatrix, fmt=fmt)
+                    np.savetxt("gps_obs_up.gmtvec", outmatrix, fmt=fmt)
 
                     # modeled
                     null = zeros((nsta,3))
                     outmatrix = hstack((llh, mod[:,0:2], null))
-                    savetxt("gps_mod.gmtvec", outmatrix, fmt=fmt)
+                    np.savetxt("gps_mod.gmtvec", outmatrix, fmt=fmt)
                     outmatrix = vstack((llh.T, null[:,0], mod[:,2], null.T)).T
-                    savetxt("gps_mod_up.gmtvec", outmatrix, fmt=fmt)
+                    np.savetxt("gps_mod_up.gmtvec", outmatrix, fmt=fmt)
                     outmatrix = hstack((llh, mod, null))
-                    savetxt("gps_mod_3d.gmtvec", outmatrix, fmt=fmt3)
+                    np.savetxt("gps_mod_3d.gmtvec", outmatrix, fmt=fmt3)
 
 	                # residual
                     r_gps = obs - mod
                     outmatrix = hstack((llh, r_gps[:,0:2], null))
-                    savetxt("gps_res.gmtvec", outmatrix, fmt=fmt)
+                    np.savetxt("gps_res.gmtvec", outmatrix, fmt=fmt)
                     outmatrix = vstack((llh.T, null[:,0], r_gps[:,2], null.T)).T
-                    savetxt("gps_res_up.gmtvec", outmatrix, fmt=fmt)
+                    np.savetxt("gps_res_up.gmtvec", outmatrix, fmt=fmt)
 
 	        # print the status
             logging.info('%d modeled and residual GPS points are output.' %(len_gps))
@@ -548,10 +546,10 @@ class Output(object):
             dhat_lev  = dhat[len_gps:len_geod]
             
             outmatrix = hstack((llh_lev[:,1], llh_lev[:,0], dhat_lev)).T
-            savetxt("lev_mod.xyz", outmatrix, fmt="%10.4f\t%10.4f\t%10.2f")
+            np.savetxt("lev_mod.xyz", outmatrix, fmt="%10.4f\t%10.4f\t%10.2f")
             res_lev = d_lev - dhat_lev
             outmatrix = hstack((llh_lev[:,1], llh_lev[:,0], res_lev)).T
-            savetxt("lev_res.xyz", outmatrix, fmt="%10.4f\t%10.4f\t%10.2f")
+            np.savetxt("lev_res.xyz", outmatrix, fmt="%10.4f\t%10.4f\t%10.2f")
             
             # print the status
             logging.info('%d modeled and residual LEV points are output.' %(len_lev))
@@ -565,11 +563,11 @@ class Output(object):
             # residual
             r_sar      = r[len_geod:len_all]/wsar
             outmatrix  = vstack((llh_sar[:,0], llh_sar[:,1], r_sar)).T
-            savetxt("sar_res.xyz", outmatrix, fmt="%10.4f\t%10.4f\t%10.2f")
+            np.savetxt("sar_res.xyz", outmatrix, fmt="%10.4f\t%10.4f\t%10.2f")
 	
             # model
             outmatrix  = vstack((llh_sar[:,0], llh_sar[:,1], (d_sar-r_sar)/wsar)).T
-            savetxt("sar_mod.xyz", outmatrix, fmt="%10.4f\t%10.4f\t%10.2f")
+            np.savetxt("sar_mod.xyz", outmatrix, fmt="%10.4f\t%10.4f\t%10.2f")
 
 	        # print the status
             logging.info('%d modeled and residual SAR points are output.' %(len_sar))
@@ -594,7 +592,6 @@ class Output(object):
 	    OUT:
 	        files
 	    '''
-	    import numpy as np
 	    
 	    fid_ss = open(fn_ss, 'w')
 	    fid_ds = open(fn_ds, 'w')
@@ -631,8 +628,6 @@ class Output(object):
 	    '''
 	    NEED DEBUGED
 	    '''        
-	    from numpy import deg2rad, sin, cos, complex, exp
-	    import numpy as np
 	
 	    # set fault parameters 
 	    wid    = dis_geom_grid[0,1]
@@ -701,8 +696,6 @@ class Output(object):
 	        FaultGeom_NNN - files in format of FaultGeom
 	    '''
 	
-	    # import important libs
-	    from numpy import mat, array, hstack, vstack, transpose, savetxt, zeros
 	
 	    # get the size of slip array
 	    slip = mat(slip)
@@ -729,12 +722,11 @@ class Output(object):
 	        patchFaultGeom = hstack((element[:,0:3], transpose(vstack((ss_slip, ds_slip, op_slip)))))
 	        fname = 'FaultGeom_%03d' %(i+1)
 	        # save the result into files
-	        savetxt(fname, patchFaultGeom[:, 0:10], fmt="%6i%6i%6i%10.3f%10.3f%10.3f")
+	        np.savetxt(fname, patchFaultGeom[:, 0:10], fmt="%6i%6i%6i%10.3f%10.3f%10.3f")
 	
     def archive_outfile(self):
         '''
         '''
-        import os, time, glob
         dirname = self.archdir
         if dirname == "":
             logging.error('This input archive directory is null')

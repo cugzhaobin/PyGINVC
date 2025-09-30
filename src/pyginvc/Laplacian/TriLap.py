@@ -4,7 +4,10 @@ Created on Fri Apr 26 11:38:43 2019
 
 @author: zhao
 """
-import logging
+import logging, h5py
+import numpy as np
+from numpy import logical_and
+
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -58,8 +61,6 @@ class TriLap(object):
             index of neighors
         '''
         
-        import numpy as np
-        from numpy import logical_and
         
         if i > np.size(tri,0):
             logging.warning("error")
@@ -127,7 +128,6 @@ class TriLap(object):
         Input:
         element  --- 
         '''
-        import numpy as np
     
         element = self.element
         smooth = np.eye(3*len(element))
@@ -182,9 +182,6 @@ class TriLap(object):
         Lap     :  m*m
         Lap_inv :  m*m
         '''
-    
-        import numpy as np
-        # from matplotlib.tri import Triangulation
     
         vertex    = self.vertex
         tri       = self.element
@@ -273,9 +270,6 @@ class TriLap(object):
         Lap_inv :  m*m
         '''
     
-        import numpy as np
-        #from matplotlib.tri import Triangulation
-    
         vertex    = self.vertex
         tri       = self.element
         nelem     = len(tri)
@@ -336,8 +330,6 @@ class TriLap(object):
         '''
         Tikhonov (minimum norm) smoothing.
         '''
-        import numpy as np
-    
         tri   = self.element
         nelem = len(tri)
         print('********************')
@@ -347,7 +339,6 @@ class TriLap(object):
         return
     
     def DumpLap(self):
-        import h5py
 
         with h5py.File('lap.h5', 'w') as h5:
             h5.create_dataset('lap', data=self.G_lap, compression='gzip')

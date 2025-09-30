@@ -6,6 +6,7 @@ Created on Fri Apr 26 09:34:53 2019
 """
 import numpy as np
 import logging
+import h5py
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -101,7 +102,6 @@ class RectPlaneLap(object):
         Written by Zhao Bin, Institute of Seismology, CEA. @ UC Berkeley.
         Dec 9, 2016
         '''
-        import numpy as np
         
         # number of model vectors
         nmod = nsegs * ndeps
@@ -289,8 +289,6 @@ class RectPlaneLap(object):
                         : The order of bcs is: top, bottom, left, right.
         '''
         
-        import numpy as np
-        
         nx     = nsegs
         nz     = ndeps
         
@@ -373,7 +371,6 @@ class RectPlaneLap(object):
         '''
         Tikhonov (minimum norm) smoothing.
         '''
-        import numpy as np
     
         nelem = self.nsegs*self.ndeps
         Lap   = np.eye(3*nelem)
@@ -382,6 +379,5 @@ class RectPlaneLap(object):
     
 
     def DumpLap(self):
-        import h5py
         with h5py.File('lap.h5', 'w') as h5:
             h5.create_dataset('lap', data=self.G_lap, compression='gzip')

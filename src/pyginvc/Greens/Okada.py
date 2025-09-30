@@ -4,7 +4,11 @@
 
 import logging
 import numpy as np
+from numpy import cos, sin, deg2rad, hstack
+from pyginvc.libs import geotools as gt
+from pyginvc.Greens import okada85 as okada
 from pyginvc.Greens.BaseGreen import BaseGreen
+#from okada_wrapper import dc3dwrapper
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -27,24 +31,6 @@ class Okada(BaseGreen):
         
         super(Okada, self).__init__(flt, data, dict_green)
         return
-#       import h5py, os
-#       greenfile = dict_green['greenfile']
-#       if greenfile == "":
-#           self.GenGreens(flt, data, dict_green)
-#       elif greenfile == "SAVE":
-#           self.GenGreens(flt, data, dict_green)
-#           with h5py.File('greenfunc.h5', 'w') as h5:
-#               h5.create_dataset('G', data = self.G, compression='gzip')
-#               h5.create_dataset('G_sar', data = self.G_sar, compression='gzip')
-#       elif os.path.isfile(greenfile):
-#           with h5py.File(greenfile, 'r') as h5:
-#               self.G     = h5['G'][()]
-#               self.G_sar = h5['G_sar'][()]
-#               logging.info('Load Greens function from {}'.format(greenfile))
-#       else:
-#           self.GenGreens(flt, data, dict_green)
-#       self.modulus = float(dict_green['modulus'])
-#       return
 
 
     def GenGreens(self, flt, data, dict_green):
@@ -59,8 +45,6 @@ class Okada(BaseGreen):
             self.G     = Green's function for GPS
             self.G_sar = Green's function for InSAR
         '''
-        import numpy as np
-        from pyginvc.libs import geotools as gt
 
         llh_gps       = data.llh_gps
         llh_lev       = data.llh_lev
@@ -183,11 +167,6 @@ class Okada(BaseGreen):
                 else:
                     u_rel_2    = u_rel_2[0:2,:]
                     G[:,3*i+1] = u_rel_2.T.flatten()
-#               import matplotlib.pyplot as plt
-#               from matplotlib.tri import Triangulation
-#               plt.scatter(xy[:,0], xy[:,1])
-#               plt.quiver(xy[:,0], xy[:,1], u_rel_2[:,0], u_rel_2[:,1])
-#               plt.show()
     
             # if we want to constrain openning slip 
             if bool(op) is True:
@@ -224,8 +203,6 @@ class Okada(BaseGreen):
         
         '''
     
-        import numpy as np
-        from numpy import cos, sin, deg2rad, hstack
     
         # 
         if dis_geom.ndim == 1: 
@@ -305,9 +282,6 @@ class Okada(BaseGreen):
         Output: Displacements in the Global coordinate system
     
         '''
-#        from okada_wrapper import dc3dwrapper
-        from  pyginvc.Greens import okada85 as okada
-        import numpy as np
     
         alp     = 1 - 2*nu
         dip     = disgeom[3]

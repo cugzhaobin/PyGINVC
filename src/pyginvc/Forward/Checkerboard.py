@@ -3,8 +3,7 @@
 # Mod by Zhao Bin, Dec. 7, 2018. replace print() with print; with open as fid
 
 import numpy as np
-import random
-import sys
+import random, sys
 
 def sync_gpsfile(gpsfile, mean, std):
     '''

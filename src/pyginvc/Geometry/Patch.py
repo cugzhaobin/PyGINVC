@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
-import os, sys, logging
 import numpy as np
 import pandas as pd
-from numpy import array, zeros, math, sqrt, sin, cos, deg2rad, rad2deg, ones, pi
-
+import os, sys, logging
+from numpy import mat, math, dot 
+from numpy import zeros, ones, deg2rad, rad2deg, sin, cos, sqrt
 from pyginvc.libs import geotools as gt
+
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -45,7 +46,7 @@ class Fault(object):
         
         # convert the fault into DISMODEL format
         if len(self.origin) != 2:
-            self.origin = array([np.mean(geom[:,[3,5]]), np.mean(geom[:,[4,6]])])
+            self.origin = np.array([np.mean(geom[:,[3,5]]), np.mean(geom[:,[4,6]])])
         logging.info(f'origin is set to {self.origin[0]:10.4f} {self.origin[1]:10.4f}')
         dis_geom = self.SetOrigin(geom)
         
@@ -123,7 +124,7 @@ class Fault(object):
             dE = 0.5*(xy1[0] + xy2[0])
             dN = 0.5*(xy1[1] + xy2[1])
             
-            dis_geom[i,:] = array([length,
+            dis_geom[i,:] = np.array([length,
                                    geom[i,0], 
                                    geom[i,1], 
                                    geom[i,2], 
@@ -175,10 +176,10 @@ class Fault(object):
         q         = q.T.flatten().T
         r         = r.T.flatten().T
     
-        mp        = array([p, q, r]).reshape(3, p.size).T
+        mp        = np.array([p, q, r]).reshape(3, p.size).T
         
         # Adjust midpoints for strike
-        R         = array([[cos(strike), -sin(strike), 0],
+        R         = np.array([[cos(strike), -sin(strike), 0],
                            [sin(strike), cos(strike), 0],
                            [ 0, 0, 1]])
     
@@ -273,7 +274,7 @@ class Fault(object):
             strk  = self.dis_geom_grid[i,4]
             dipr  = deg2rad(dip)
             strkr = deg2rad(strk)
-            dipdir= pi - strkr
+            dipdir= np.pi - strkr
             ss    =-self.dis_geom_grid[i,7]
             ds    = self.dis_geom_grid[i,8]
             op    = self.dis_geom_grid[i,9]
@@ -308,7 +309,7 @@ class Fault(object):
             
             
             # assign to flt_elem_all
-            felems[i,:] = array([
+            felems[i,:] = np.array([
                 length, width, strk, dip, rake,
                 ss, ds, op, ts,
                 gll.imag, gll.real, bottom, 
@@ -366,7 +367,7 @@ class Fault(object):
 	        # midpoint
             midlat = 0.5*(geom[i,3] + geom[i,5])
             midlon = 0.5*(geom[i,4] + geom[i,6])
-            x[i,:] = array([length, geom[i,0], geom[i,1], geom[i,2], strike, midlat, midlon])    
+            x[i,:] = np.array([length, geom[i,0], geom[i,1], geom[i,2], strike, midlat, midlon])    
 	    
         return x
         
@@ -383,7 +384,6 @@ class Fault(object):
         
         '''
 
-        from numpy import zeros, deg2rad, sin, cos, sqrt, rad2deg, array
         fmt = 7*"%10.4f"
         print(fmt %(x[0,0], x[0,1], x[0,2], x[0,3], x[0,4], x[0,5], x[0,6]))
         nf       = len(x)
@@ -818,10 +818,10 @@ class Fault(object):
 
     def plot_faultgeom(self, afsfile="", coordtype="llh", show_idx=False, azimuth=-40, elevation=40, sarfile="", gpsfile=""):
         """"""
-        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
         import matplotlib.pyplot as plt
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
         felem = self.FaultGeom2AllVertex()
-        print(felem)
         slip  = felem['total_slip'] / felem["total_slip"].max()
     
         if coordtype == 'llh':

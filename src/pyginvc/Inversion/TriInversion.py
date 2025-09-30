@@ -4,8 +4,10 @@
 # Mod by Zhao Bin, Dec. 7, 2018. We use HDF5 to store solutions
 
 import numpy as np
-from scipy import optimize
 import logging, sys
+from scipy import optimize
+from numpy import vstack, hstack, zeros, arange, sqrt, diag, sum, genfromtxt
+
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -46,7 +48,6 @@ class TriInversion(object):
         Invert for slip model
         Mod by Zhao Bin, Mar 14, 2020. Rescale W with wgps
         '''
-        from numpy import vstack, hstack, zeros, arange, sqrt, diag, sum
 
         d_gps         = self.data.d_gps
         d_lev         = self.data.d_lev
@@ -277,7 +278,6 @@ class TriInversion(object):
             Mo       : total moment
             Mw       : magnitude
         '''
-        import numpy as np
         
         nelem   = len(element)
         Mo      = np.zeros(nelem)
@@ -321,7 +321,6 @@ class TriInversion(object):
             bu          = upper bound of parameter
             bl          = lower bound of parameter
         '''            
-        from numpy import genfromtxt
     
         slip_lb, slip_ub = '', ''
         for (k,v) in varargin.items():

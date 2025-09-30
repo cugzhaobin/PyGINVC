@@ -492,8 +492,6 @@ def Moment(Len, Wid, slip, shearmodulus):
     
     '''
 
-    import numpy as np
-
     Mo_total = 1000*Len * 1000*Wid * slip * shearmodulus
     Mw_total = 2.0/3.0*np.log10(Mo_total) - 6.067
 

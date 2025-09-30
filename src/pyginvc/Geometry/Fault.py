@@ -2,10 +2,12 @@
 # Written by Zhao Bin, when he is at UC Berkeley. Feb 14 2016
 # Mod by Zhao Bin, Dec. 7, 2018. replace print() with print
 
-import os, sys, logging
 import numpy as np
-from numpy import array, zeros
+import os, sys, logging
+from numpy import mat, math, dot 
+from numpy import zeros, ones, deg2rad, rad2deg, sin, cos, sqrt
 from pyginvc.libs import geotools as gt
+
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -43,7 +45,7 @@ class Fault(object):
         
         # convert the fault into DISMODEL format
         if len(origin) != 2:
-            origin = array([np.mean(geom[:,[3,5]]), np.mean(geom[:,[4,6]])])
+            origin = np.array([np.mean(geom[:,[3,5]]), np.mean(geom[:,[4,6]])])
         logging.info('origin is set to {:10.4f} {:10.4f}'.format(origin[0], origin[1]))
         [dis_geom, origin] = self.SetOrigin(geom, origin)
         
@@ -115,9 +117,8 @@ class Fault(object):
         Output:
            geom      = numpy array, shape(m,10). The structure is same as input
         '''
-        from numpy import array, genfromtxt
         # init parameter
-        geom = array([])
+        geom = np.array([])
     
         # check the file is exit
         isfile = os.path.isfile(filename)
@@ -126,7 +127,7 @@ class Fault(object):
            sys.exit()
     
         # load the data
-        geom = genfromtxt(filename, comments='#')
+        geom = np.genfromtxt(filename, comments='#')
         if geom.ndim == 1: geom = geom.reshape((1, len(geom)))
         logging.info('Fault Geometry is loaded.')
         return geom
@@ -144,7 +145,6 @@ class Fault(object):
             dis_geom = numpy array, containing Length Width Depth Dip Strike dE dN Strike-Slip Dip-slip Openning
             origin   = numpy array, containing latitude and longitude in degree
         '''
-        from numpy import array, zeros, math, sqrt, rad2deg
         [nf, ncol] = geom.shape
             
         # initiate the ouput parameter dis_geom
@@ -168,7 +168,7 @@ class Fault(object):
             delE = 0.5*(xy_1end[0] + xy_2end[0])
             delN = 0.5*(xy_1end[1] + xy_2end[1])
             
-            dis_geom[i,:] = array([leng, geom[i,0], geom[i,1], geom[i,2], strik, delE, delN, geom[i,7], geom[i,8], geom[i,9]])    
+            dis_geom[i,:] = np.array([leng, geom[i,0], geom[i,1], geom[i,2], strik, delE, delN, geom[i,7], geom[i,8], geom[i,9]])    
         return dis_geom, origin
         
     @staticmethod
@@ -192,16 +192,14 @@ class Fault(object):
             pm = mx7 matrix of patch models, where m=i*j
         '''
         
-        from numpy import sin, cos, arange, transpose, deg2rad, ones, dot, lexsort
-        from numpy import zeros, mat, array
         dip     = deg2rad(m[0,3])
         strike  = deg2rad(-m[0,4])
         sin_dip = sin(dip)
         cos_dip = cos(dip)
         iw      = m[0,0]/i
         jw      = m[0,1]/j
-        iis     = arange(1, i+1)
-        jjs     = transpose(arange(1, j+1))
+        iis     = np.arange(1, i+1)
+        jjs     = np.transpose(np.arange(1, j+1))
         n       = i*j
         
         # Calculate midpoints, depths of each patch    
@@ -212,10 +210,10 @@ class Fault(object):
         q         = q.T.flatten().T
         r         = r.T.flatten().T
     
-        mp        = array([p, q, r]).reshape(3, p.size).T
+        mp        = np.array([p, q, r]).reshape(3, p.size).T
         
         # Adjust midpoints for strike
-        R         = array([[cos(strike), -sin(strike), 0],
+        R         = np.array([[cos(strike), -sin(strike), 0],
                            [sin(strike), cos(strike), 0],
                            [ 0, 0, 1]])
     
@@ -235,7 +233,7 @@ class Fault(object):
         
     
         # sort the pm
-        idx = lexsort((pm[:,5], pm[:,2]))
+        idx = np.lexsort((pm[:,5], pm[:,2]))
         pm  = pm[idx]    
         return pm
         
@@ -261,7 +259,6 @@ class Fault(object):
                             ( km    km    deg  deg  deg  deg  deg)
             
         '''
-        from numpy import sin, cos, deg2rad, zeros
         geom = zeros((nf,7))
         
         if nf > 0:
@@ -302,8 +299,6 @@ class Fault(object):
         Output:
             flt_elem_all = numpy array, shape(m,33). Leng, wid, dip, strk, ss, ds, op, ts, rake, top_left_llh, top_right_llh, bottom_right_llh, bottom_left_llh, top_left_neu, top_right_neu, bottom_right_neu, bottom_left_neu
         '''
-        from numpy import sin, cos, deg2rad, rad2deg, ones, pi, sqrt, math
-        from numpy import array
     
         N            = 6378206.4
         e            = 1.0/298.257
@@ -313,7 +308,7 @@ class Fault(object):
         flt_elem_all = ones([nf, 33])
 
         if len(origin) != 2:
-            origin = array([np.mean(geom[0,[3,5]]), np.mean(geom[0,[4,6]])])
+            origin = np.array([np.mean(geom[0,[3,5]]), np.mean(geom[0,[4,6]])])
     
         for i in range(nf):
         
@@ -325,7 +320,7 @@ class Fault(object):
             strk  = disgeom[i,4]
             dipr  = deg2rad(dip)
             strkr = deg2rad(strk)
-            dipdir= pi - strkr
+            dipdir= np.pi - strkr
             ss    =-disgeom[i,7]
             ds    = disgeom[i,8]
             op    = disgeom[i,9]
@@ -387,11 +382,10 @@ class Fault(object):
             dis_geom - numpy array, containing Length Width Depth Dip Strike midLat midLon Strike-Slip Dip-slip Openning
 
     '''
-        from numpy import mat, array, zeros, sqrt, rad2deg, math
         # convert array to matrix
         geom = mat(geom)
         [nf, ncol] = geom.shape
-        geom = array(geom)
+        geom = np.array(geom)
 
         # initiate the ouput parameter x
         x = zeros((nf,7))
@@ -414,7 +408,7 @@ class Fault(object):
 	        midpointlat = 0.5*(geom[0,3] + geom[0,5])
 	        midpointlon = 0.5*(geom[0,4] + geom[0,6])
 	        
-	        x[i,:] = array([len, geom[i,0], geom[i,1], geom[i,2], strik, midpointlat, midpointlon])    
+	        x[i,:] = np.array([len, geom[i,0], geom[i,1], geom[i,2], strik, midpointlat, midpointlon])    
 	    
         return x
         
@@ -431,7 +425,6 @@ class Fault(object):
         
         '''
 
-        from numpy import zeros, deg2rad, sin, cos, sqrt, rad2deg, array
         fmt = 7*"%10.4f"
         print(fmt %(x[0,0], x[0,1], x[0,2], x[0,3], x[0,4], x[0,5], x[0,6]))
         nf       = len(x)
@@ -470,7 +463,7 @@ class Fault(object):
             delE    = 0.5*(xy_1end[0] + xy_2end[0])
             delN    = 0.5*(xy_1end[1] + xy_2end[1])
     
-            dis_geom[i,:] = array([tempgeom[0], geom[i,0], geom[i,1], geom[i,2], tempgeom[4], delE, delN])    
+            dis_geom[i,:] = np.array([tempgeom[0], geom[i,0], geom[i,1], geom[i,2], tempgeom[4], delE, delN])    
         return geom, dis_geom
 
 
@@ -527,7 +520,6 @@ class Fault(object):
         
         Notice that the in Coulomb x(east) and y(north)
         '''
-        from numpy import deg2rad, sin
     
         # compute some values for ouput file
         geom     = self.geom_grid

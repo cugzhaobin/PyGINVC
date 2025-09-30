@@ -2,8 +2,10 @@
 # Written by Zhao Bin, May 15, 2021
 
 import numpy as np
-import datetime
-import logging
+import logging, h5py, os
+from numpy import sin, cos, deg2rad
+from pyginvc.libs import geotools as gt
+
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -24,7 +26,6 @@ class Mogi(object):
             dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
         '''
         
-        import h5py, os
         self.vol = vol
         greenfile = dict_green['greenfile']
         if greenfile == "":
@@ -55,8 +56,6 @@ class Mogi(object):
             self.G     = Green's function for GPS
             self.G_sar = Green's function for InSAR
         '''
-        import numpy as np
-        from pyginvc.libs import geotools as gt
 
         llh_gps       = data.llh_gps
         llh_lev       = data.llh_lev
@@ -103,8 +102,6 @@ class Mogi(object):
             G = np.hstack((G, G_dis))
     
             # print the status
-            now = datetime.datetime.now()
-            now = now.strftime('%y%m%d:%H%M:%S')
             if verbose:
                 logging.info('Green function for %d Level stations are computed.' %(len(xy_lev)))
         
@@ -181,7 +178,6 @@ class Mogi(object):
             G            -  numpy array, desigin matrix
         
         '''
-        from numpy import sin, cos, deg2rad
         nvol = self.vol.nvol
         nsta = xy.shape[0]
     

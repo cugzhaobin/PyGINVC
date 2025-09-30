@@ -3,8 +3,10 @@
 # Revised by Zhao Bin, Apr. 26, 2019. to Object Oriented Code.
 # Revised by Zhao Bin, Dev. 12, 2021. Rotate Green's function when rake_beta !=0
 
-import numpy as np
 import logging
+import numpy as np
+from numpy import sin, cos, deg2rad
+from pyginvc.libs import geotools as gt
 from pyginvc.Greens.tdcalc import TDdispHS
 from pyginvc.Greens.BaseGreen import BaseGreen
 
@@ -56,7 +58,6 @@ class Nikkhoo(BaseGreen):
             dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
 
         '''
-        from pyginvc.libs import geotools as gt
         llh_gps       = data.llh_gps
         llh_lev       = data.llh_lev
         llh_sar       = data.llh_sar
@@ -95,12 +96,6 @@ class Nikkhoo(BaseGreen):
             for i in range(len(llh_sar)):
                 xy_sar[i,:] = gt.llh2localxy(llh_sar[i], origin)
                 xy_sar[i,:] = gt.llh2utm(llh_sar[i], origin)
-#       import matplotlib.pyplot as plt
-#       from matplotlib.tri import Triangulation
-#       tri = Triangulation(node[:,0], node[:,1], element-1)
-#       plt.scatter(xy_gps[:,0], xy_gps[:,1])
-#       plt.triplot(tri)
-#       plt.show()
         
         logging.info('Begin to generating Greens function.')
         # if we have GPS data
@@ -188,13 +183,6 @@ class Nikkhoo(BaseGreen):
                 elif gdim == 2:
                     G[:, 3*i+1] = disp[:,[0,1]].flatten()
 
-#               import matplotlib.pyplot as plt
-#               from matplotlib.tri import Triangulation
-#               tri = Triangulation(node[:,0], node[:,1], element)
-#               plt.triplot(tri)
-#               plt.scatter(xy[:,0], xy[:,1])
-#               plt.quiver(xy[:,0], xy[:,1], disp[:,0], disp[:,1])
-#               plt.show()
             # open slip
             if op == 1:
                 disp = TDdispHS(rec, src, [0,0,1], nu)
@@ -230,8 +218,6 @@ class Nikkhoo(BaseGreen):
         
         '''
         
-        # import libs
-        from numpy import sin, cos, deg2rad
     
         # number of SAR data
         nsta  = len(xy)

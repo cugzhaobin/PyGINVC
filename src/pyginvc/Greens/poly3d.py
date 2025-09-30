@@ -1,15 +1,14 @@
 #!/usr/bin/env python
-# By Zhao Bin, Institute of Seismology, CEA. Nov 8, 2017
+# Written by Zhao Bin, Institute of Seismology, CEA. Nov 8, 2017
+# Modified by Zhao Bin, Oct. 26, 2020
 # This contain several functions to manipulate POLY3D input and ouput file
 
 # import libs
-import numpy as np
-import Fault as flt
 import sys, math
+import numpy as np
 import pyginvc.libs.geotools as gt
 
-def gen_poly3d_input(vertex, element, bc, bctype=[], vcs='FaultCS', ecs='elocal', obspt=[],
-                     shear_mod=3e4):
+def gen_poly3d_input(vertex, element, bc, bctype=[], vcs='FaultCS', ecs='elocal'):
     '''
     Make input file for POLY3D using vertex and displacement element
     Written by Zhao Bin, Institute of Seismolgy, CEA. Nov 13, 2017
@@ -27,22 +26,17 @@ def gen_poly3d_input(vertex, element, bc, bctype=[], vcs='FaultCS', ecs='elocal'
     '''
 
     # open file for writing
-    fid  = open('poly3d.in', 'w')
+    with open('poly3d.in', 'w') as fid:
 
-    if shear_mod > 1e8:
-        shear_mod = shear_mod/1e6
-    # write header of POLY3D input file
-    write_header(fid, 2000, obspt=obspt, shear_mod=shear_mod)
-    # write vertex of POLY3D input file
-    write_vertex(fid, vertex, vcs=vcs)
-    # write element of POLY3D input file
-    write_element(fid, element, bc, bctype=bctype, ecs=ecs)
-
-    fid.close()
+        # write header of POLY3D input file
+        write_header(fid, 2000)
+        # write vertex of POLY3D input file
+        write_vertex(fid, vertex, vcs=vcs)
+        # write element of POLY3D input file
+        write_element(fid, element, bc, bctype=bctype, ecs=ecs)
 
 
-
-def write_header(fid, maxslip, obspt=[], shear_mod=3e4):
+def write_header(fid, maxslip):
     '''
     Write header for input file of POLY3D
     Written by Zhao Bin, Institute of Seismology, CEA. Nov 13, 2017
@@ -66,7 +60,7 @@ def write_header(fid, maxslip, obspt=[], shear_mod=3e4):
     fid.write('* Elastic Constants\n')
     fid.write('* Specify any two. Leave the rest blank.\n')
     fid.write('*----------------------------------------\n')
-    fid.write('shear_mod         = {}\n'.format(shear_mod))
+    fid.write('shear_mod         = 30000.0\n')
     fid.write('psn_ratio         = 0.25\n')
     fid.write('youngs_mod        =\n')
     fid.write('bulk_mod          =\n')
@@ -109,10 +103,8 @@ def write_header(fid, maxslip, obspt=[], shear_mod=3e4):
     fid.write('* (1)    (2) (3)      (4)        (5)        (6)     (7)    (8)    (9)    (10)   (11)   (12) (13) (14) (15)\n')
     fid.write('*name    dim outp  endpt csys obspt csys outp csys x1beg  x2beg  x3beg  x1end  x2end  x3end  nx1 nx2 nx3\n')
     fid.write('*------- --- ----- ---------- ---------- --------- ------ ------ ------ ------ ------ ------ --- --- ---\n')
-    for i in range(len(obspt)):
-        fid.write('ObsGrid   0   sd   global  global  global {} {} {}\n'.format(obspt[i,0], obspt[i,1], 0.0))
-#   fid.write('ObsGrid  0    sd    global     global     global    -50.5  -20.5  0.0\n')
-#   fid.write('ObsPlane 2     d    global     global     global    -100  -200   0 300  200 0 30   30  1\n')
+    fid.write('ObsGrid  0    sd    global     global     global    -50.5  -20.5  0.0\n')
+    fid.write('ObsPlane 2     d    global     global     global    -300     -300      0 300     300    0 30   30  1\n')
     fid.write('\n')
     fid.write('end *(OBSERVATION GRIDS)\n')
     # write section four
@@ -131,19 +123,22 @@ def write_header(fid, maxslip, obspt=[], shear_mod=3e4):
     fid.write('*- -------- ---------  ------  ------  ------\n')
 
 
-def write_vertex(fid, vertex, vcs='FaultCS'):
+def write_vertex(fid, vertex, vcs='FaultCS', sid=0):
     '''
     Write vertex section into POLY3D input file
     Written by Zhao Bin, Institute of Seismology, CEA. Nov. 13, 2017
+    Modified by Zhao Bin, Dec. 22, 2020
 
     IN
         fid      : file ID for poly3d.in
         vertex   : vertex of elements
+        vcs      : coordinate system of vertex
+        sid      : start index of vertex
     '''
 
     # write vertex
     for i in range(len(vertex)):
-        line = "v %4d %s %10.3f %10.3f %10.3f\n" %(i+1, vcs, vertex[i,0], vertex[i,1], vertex[i,2] )
+        line = "v %4d %s %10.3f %10.3f %10.3f\n" %(i+1+sid, vcs, vertex[i,0], vertex[i,1], vertex[i,2] )
         fid.write(line)
 
 
@@ -168,9 +163,10 @@ def write_element(fid, element, bc, bctype=[], ecs='elocal'):
     fid.write(' - ----- --------- ------- --------- --------- --------- -- -- -- --\n')
     newline = ""
 
+    
     if len(bctype) == 0:
         for i in range(len(bc)):
-            bctype.append('ttt')
+            bctype.append('bbb')
 
     if len(element) != len(bc):
         print('write_element: make sure element and disp_element are with same length')
@@ -183,7 +179,7 @@ def write_element(fid, element, bc, bctype=[], ecs='elocal'):
                     element[i,0], element[i,1], element[i,2], element[i,3])
         elif element.shape[1] == 3:
             newline =  'e  3  %s  %s  %10.2f  %10.2f  %10.2f  %d %d %d\n' \
-                    %(ecs, bctype, bc[i,0], bc[i,1], bc[i,2], \
+                    %(ecs, bctype[i], bc[i,0], bc[i,1], bc[i,2], \
                     element[i,0], element[i,1], element[i,2])
         fid.write(newline)
     fid.write("end *(OBJECTS/ELEMENTS/VERTICES)")
@@ -201,13 +197,10 @@ def read_element_vertex(infile):
         bctype      : element array, [element index]
         bc          : element array, [element index]
     '''
-    fid = open(infile, 'r')
 
     # read all lines into content
-    content = fid.readlines()
-
-    # close the file
-    fid.close()
+    with open(infile, 'r') as fid:
+        content = fid.readlines()
 
     vertex  = []
     element = []
@@ -257,8 +250,8 @@ def read_disp_element(outfile):
     Output:
     element_disp: list of displacement
     '''
-    fid = open(outfile, 'r')
-    content = fid.readlines()
+    with open(outfile, 'r') as fid:
+        content = fid.readlines()
 
     element_disp = []
     bobj   = False
@@ -277,7 +270,8 @@ def read_disp_element(outfile):
             continue
         elif bobj and bdisp and bdash:
             if len(line.split())<1 and len(element_disp)>0:
-                break 
+                bobj, bdisp, bdash = False, False, False
+                continue
             dipslip    =  float(line.split()[4])
             strikeslip =  float(line.split()[7])
             openslip   =  float(line.split()[10])
@@ -298,8 +292,8 @@ def read_stress_element(outfile):
     Output:
     element_strss: list of stress
     '''
-    fid = open(outfile, 'r')
-    content = fid.readlines()
+    with open(outfile, 'r') as fid:
+        content = fid.readlines()
 
     element_strss = []
     bobj   = False
@@ -316,7 +310,8 @@ def read_stress_element(outfile):
             continue
         elif bobj and bstress and bdash:
             if len(line.split())<1 and len(element_strss)>0:
-                break
+                bobj, bstress, bdash = False, False, False
+                continue
             dipstrss    =  float(line.split()[4])
             strikestrss =  float(line.split()[5])
             openstrss   =  float(line.split()[6])
@@ -414,9 +409,9 @@ def uniq_vertex(vertex):
     # for each depth
     uniqv = []
     for i in range(len(depth)):
-        indx = np.where((np.abs(vertex[:,2]-depth[i])<0.01))
+        indx = np.where((np.abs(vertex[:,2]-depth[i])<1))
         hvertex = vertex[indx]
-        hvertex = merge_array(hvertex, 1.5)
+        hvertex = merge_array(hvertex, 5)
         uniqv.append(hvertex)
 #       print '***************************'
 #       print len(hvertex), depth[i]
@@ -437,7 +432,7 @@ def getindx(node, vertex):
     return indx+1
 
 
-def vertex_element_from_faultgeom(faultfile):
+def vertex_element_from_faultgeom(faultfile, origin):
     '''
     Read vertex and element from FaultGeom file
     Written by Zhao Bin, Institute of Seismology, CEA. Nov. 14, 2017
@@ -447,24 +442,24 @@ def vertex_element_from_faultgeom(faultfile):
         vertex    :
         elem      :
     '''
-    geom              = flt.LoadFaultGeom(faultfile)
-    [disgeom, origin] = flt.SetOrigin(geom)
-    felem             = flt.FaultGeom2AllVertex(geom, disgeom)
+    from pyginvc.Geometry.Fault import Fault
+    flt               = Fault(faultfile, 1, 1, False, origin=origin)
+    felem             = flt.felem
     vertex            = np.zeros((4*len(felem), 3))
     elements          = []
     patch             = []
-    disp_element      = felem[:,[5,4,6]] # ds, ss, op
+    disp_element      = felem[:,[5,4,6]] # ds, ss, opa # unit is mm
 
     for i in range(len(felem)):
-        vertex[4*i,:]   = felem[i,9:12]
-        vertex[4*i+1,:] = felem[i,12:15]
-        vertex[4*i+2,:] = felem[i,15:18]
-        vertex[4*i+3,:] = felem[i,18:21]
+        vertex[4*i,:]   = felem[i,21:24]
+        vertex[4*i+1,:] = felem[i,24:27]
+        vertex[4*i+2,:] = felem[i,27:30]
+        vertex[4*i+3,:] = felem[i,30:33]
 
-        patch.append(felem[i,9:12])
-        patch.append(felem[i,12:15])
-        patch.append(felem[i,15:18])
-        patch.append(felem[i,18:21])
+        patch.append(felem[i,21:24])
+        patch.append(felem[i,24:27])
+        patch.append(felem[i,27:30])
+        patch.append(felem[i,30:33])
         elements.append(patch)
         patch = []
 
@@ -484,7 +479,7 @@ def vertex_element_from_faultgeom(faultfile):
         indx4 = getindx(node4, newvertex)
         elem[i,:] = np.array([indx1, indx2, indx3, indx4])
 
-    return newvertex, elem, disp_element, origin
+    return newvertex, elem, disp_element
     
     
 def write_gmt_disp(vertex, element, disp_element, disp_type="ds"):
@@ -495,62 +490,73 @@ def write_gmt_disp(vertex, element, disp_element, disp_type="ds"):
         vertex      : narray, [m, 3], east, north, depth
         element     : narray, [m, 4], index of vertex for rectangular
         disp_element: narray, [m, 3], ds, ss, op
-        disp_type   : ds/ss/ts
+        disp_type   : ds/ss/op
     OUT:
         disp.gmtlin
     '''
     
     outfile = "disp_"+disp_type+".gmtlin"
-    fid     = open(outfile, 'w')
     fmt     = 3*"%10.3f "+"\n"
-    for i in range(len(element)):
-        if disp_type == 'ds':
-            line = '> -Z%f\n' %(disp_element[i,0])
-        elif disp_type == 'ss':
-            line = '> -Z%f\n' %(disp_element[i,1])
-        elif disp_type == 'ts':
-            line = '> -Z%f\n' %(np.sqrt(disp_element[i,0]**2 + disp_element[i,1]**2))
-        fid.write(line)
-
-        elem = element[i]
-        for j in range(len(elem)):
-            index = elem[j]-1
-            line  = fmt %(vertex[index, 0], vertex[index, 1], vertex[index, 2])
+    with open(outfile, 'w') as fid:
+        for i in range(len(element)):
+            if disp_type == 'ds':
+                line = '> -Z%f\n' %(disp_element[i,0])
+            elif disp_type == 'ss':
+                line = '> -Z%f\n' %(disp_element[i,1])
+            elif disp_type == 'op':
+                line = '> -Z%f\n' %(np.sqrt(disp_element[i,0]**2 + disp_element[i,1]**2))
             fid.write(line)
 
+            elem = element[i]
+            for j in range(len(elem)):
+                index = elem[j]-1
+                line  = fmt %(vertex[index, 0], vertex[index, 1], vertex[index, 2])
+                fid.write(line)
 
-def write_gmt_stress(vertex, element, stress_element, stress_type="ds"):
+
+def write_gmt_stress(vertex, element, stress_element, stress_type="ds", mu=0.4, rake=0, scale=1.0):
     '''
     Write POLY3D output to GMT format
     Written by Zhao Bin, Institute of Seismology, CEA. Nov. 14, 2017
+    Modified by Zhao Bin, Oct. 26, 2020, output Coulomb stress
     IN:
         vertex        : narray, [m, 3], east, north, depth
         element       : narray, [m, 4], index of vertex for rectangular
         stress_element: narray, [m, 3], ds, ss, op
-        stress_type   : ds/ss/ts
+        stress_type   : ds/ss/op/ts/cfs
+        mu            : frictional coefficient
+        rake          : rake angle
     OUT:
         disp.gmtlin
     '''
     
     # convert stress to MPa
-    stress_element = stress_element
+    stress_element = stress_element*scale
     outfile = "stress_"+stress_type+".gmtlin"
-    fid     = open(outfile, 'w')
     fmt     = 3*"%10.3f "+"\n"
-    for i in range(len(element)):
-        if stress_type == 'ds':
-            line = '> -Z%f\n' %(stress_element[i,0])
-        elif stress_type == 'ss':
-            line = '> -Z%f\n' %(stress_element[i,1])
-        elif stress_type == 'ts':
-            line = '> -Z%f\n' %(np.sqrt(stress_element[i,0]**2 + stress_element[i,1]**2))
-        fid.write(line)
-
-        elem = element[i]
-        for j in range(len(elem)):
-            index = elem[j]-1
-            line  = fmt %(vertex[index, 0], vertex[index, 1], vertex[index, 2])
+    rake    = np.deg2rad(rake)
+    with open(outfile, 'w') as fid:
+        for i in range(len(element)):
+            if stress_type == 'ds':
+                line = '> -Z%f\n' %(stress_element[i,0])
+            elif stress_type == 'ss':
+                line = '> -Z%f\n' %(stress_element[i,1])
+            elif stress_type == 'op':
+                line = '> -Z%f\n' %(stress_element[i,2])
+            elif stress_type == 'ts':
+                line = '> -Z%f\n' %(np.linalg.norm(stress_element[i,0:2]))
+            elif stress_type == 'cfs':
+                cfs  = stress_element[i,0]*np.cos(rake) +\
+                       stress_element[i,1]*np.sin(rake) -\
+                       stress_element[i,2]*mu
+                line = '> -Z%f\n' %(cfs)
             fid.write(line)
+
+            elem = element[i]
+            for j in range(len(elem)):
+                index = elem[j]-1
+                line  = fmt %(vertex[index, 0], vertex[index, 1], vertex[index, 2])
+                fid.write(line)
 
 
 def read_disp_surface(outfile):
@@ -563,19 +569,21 @@ def read_disp_surface(outfile):
     Output:
     element_disp: list of displacement
     '''
-    fid = open(outfile, 'r')
-    content = fid.readlines()
+
+    with open(outfile, 'r') as fid:
+        content = fid.readlines()
     bdisp = False
     disp  = []
     for i in range(len(content)):
-        if content[i].find('DISPLACEMENTS') != -1:
+        if content[i].find('X1       X2       X3         U1         U2         U3')>0:
             bdisp = True
-        if len(content[i].split())==6:
-            if content[i].find('e') >0 and bdisp:
+        if content[i].find('-') >0 and bdisp:
+            if len(content[i].split())==6:
                 dat  = [float(j) for j in content[i].split()]
                 disp.append(dat)
+            else:
+                bdisp = False
     disp = np.array(disp)
-    disp = disp[:,[3,4,5]]
     return disp
 
 
@@ -617,3 +625,98 @@ def gen_faultgeom(infile, outfile, origin):
 
         fmt  = 3*"%10.3f"+4*"%10.4f"+3*"%15.3f"
         print(fmt %(width, np.abs(v1[2]), dip, llh1[0,0], llh1[0,1], llh2[0,0], llh2[0,1], elem_slip[i,0], elem_slip[i,1], elem_slip[i,2]))
+
+def write_trielement(element, data, dtype='disp'):
+    '''
+    Write displacement/stress to .mesh file
+    ss ds op
+    '''
+    if element.shape[0] != data.shape[0]:
+        print(' check the dimension')
+        sys.exit()
+    else:
+        ofile= dtype+'.mesh'
+        with open(ofile, 'w') as fid:
+            for i in range(len(element)):
+                if len(element[i]) == 3:
+                    fid.write("{:5d} {:5d} {:5d} {:15.3f} {:15.3f} {:15.3f}\n".format(
+                        element[i][0], element[i][1], element[i][2], data[i,1], data[i,0], data[i,2]))
+                elif len(element[i]) == 4:
+                    fid.write("{:5d} {:5d} {:5d} {:5d} {:15.3f} {:15.3f} {:15.3f}\n".format(
+                        element[i][0], element[i][1], element[i][2], element[i][3], data[i,1], data[i,0], data[i,2]))
+
+
+def vertex_enu2llh(vertex, origin):
+    '''
+    Convert vertex coordinate from enu format to llh
+    Written by Zhao Bin, Dec. 22, 2020
+
+    Input:
+        vertex = [e, n, u]
+        origin = [lat, lon]
+    Output:
+        enu
+    '''
+
+    llh = np.copy(vertex)
+    for i in range(len(llh)):
+        llh[i,0:2] = gt.utm2llh(vertex[i,[1,0]], origin)
+
+    return llh
+
+
+
+def ExportVTK(vertex, element, slip, traction, disp):
+    '''
+    Write the fault geometry and slip distribution to VTK file for Paraview.
+    '''
+
+    nf  = len(element)
+    npt = element.shape[1]
+    with open('poly3d.vtp', 'w') as fid:
+        fid.writelines(["<?xml version=\"1.0\"?>\n",
+                   "<VTKFile type=\"PolyData\" version=\"0.1\">\n",
+                   "  <PolyData>\n"])
+
+        for i in range(0,nf):
+            enu = vertex[element[i]-1]
+            fid.write("    <Piece NumberOfPoints=\"{}\" NumberOfPolys=\"1\">\n".format(npt))
+            fid.write("      <Points>\n")
+            fid.write("        <DataArray type=\"Float32\" Name=\"Fault Patch\" NumberOfComponents=\"3\" format=\"ascii\">\n")
+            for j in range(element.shape[1]):
+                fid.write("         {} {} {}\n".format(enu[j,0], enu[j,1], enu[j,2]))
+            fid.write("         </DataArray>\n")
+            fid.write("      </Points>\n")
+            fid.write("      <Polys>\n")
+            fid.write("        <DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\" RangeMin=\"0\" RangeMax=\"{}\">\n".format(nf-1))
+            if npt == 3:
+                fid.write("0 1 2\n")
+            elif npt == 4:
+                fid.write("0 1 2 3\n")
+            else:
+                pass
+            fid.write("        </DataArray>\n")
+            fid.write("        <DataArray type=\"Int32\" Name=\"offsets\" format=\"ascii\" RangeMin=\"{}\" RangeMax=\"{}\">\n".format(npt, npt))
+            fid.write("          {}\n".format(npt))
+            fid.write("        </DataArray>\n")
+            fid.write("      </Polys>\n")
+            fid.write("      <CellData Scalar=\"geometry\">\n")
+            fid.write("        <DataArray type=\"Float32\" Name=\"dip slip\" NumberOfComponents=\"1\" format=\"ascii\">\n")
+            fid.write("{}\n".format(slip[i,0]))
+            fid.write("        </DataArray>\n")
+            fid.write("        <DataArray type=\"Float32\" Name=\"strike slip\" NumberOfComponents=\"1\" format=\"ascii\">\n")
+            fid.write("{}\n".format(slip[i,1]))
+            fid.write("        </DataArray>\n")
+            fid.write("        <DataArray type=\"Float32\" Name=\"slip\" NumberOfComponents=\"1\" format=\"ascii\">\n")
+            fid.write("{}\n".format(np.sqrt(slip[i,0]**2+slip[i,1]**2)))
+            fid.write("        </DataArray>\n")
+            fid.write("        <DataArray type=\"Float32\" Name=\"dip traction\" NumberOfComponents=\"1\" format=\"ascii\">\n")
+            fid.write("{}\n".format(traction[i,1]))
+            fid.write("        </DataArray>\n")
+            fid.write("        <DataArray type=\"Float32\" Name=\"strike traction\" NumberOfComponents=\"1\" format=\"ascii\">\n")
+            fid.write("{}\n".format(traction[i,0]))
+            fid.write("        </DataArray>\n")
+            fid.write("      </CellData>\n")
+            fid.write("    </Piece>\n")
+        fid.write("  </PolyData>\n")
+        fid.write("</VTKFile>\n")

@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 # Written by Zhao Bin, Aug. 26, 2020
-
+import os, logging
 import numpy as np
+from pyginvc.Greens import poly3d
+from numpy import sin, cos, deg2rad
 from pyginvc.Greens.BaseGreen import BaseGreen
-import logging
+import pyginvc.libs.geotools as gt
+
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -35,7 +38,6 @@ class TriPoly3D(BaseGreen):
             dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
 
         '''
-        import geotools as gt
         llh_gps       = data.llh_gps
         llh_lev       = data.llh_lev
         llh_sar       = data.llh_sar
@@ -121,8 +123,6 @@ class TriPoly3D(BaseGreen):
         Output:
             G       = array
         '''
-        import os
-        from Greens import poly3d
         # number of stations
         nsta      = len(xy)
         # number of elements
@@ -159,13 +159,6 @@ class TriPoly3D(BaseGreen):
                     G[:,3*i+1] = disp.flatten()
                 elif gdim == 2:
                     G[:,3*i+1] = disp[:[0,1]].flatten()
-                import matplotlib.pyplot as plt
-                from matplotlib.tri import Triangulation
-                tri = Triangulation(node[:,0], node[:,1], element)
-                plt.triplot(tri)
-                plt.scatter(xy[:,0], xy[:,1])
-                plt.quiver(xy[:,0], xy[:,1], disp[:,0], disp[:,1])
-#               plt.show()
             # open slip
             if op == 1:
                 bc = np.array([[0,0,1]])
@@ -201,10 +194,6 @@ class TriPoly3D(BaseGreen):
         
         '''
         
-        # import libs
-        from numpy import sin, cos, deg2rad
-        import os, poly3d
-    
         # number of SAR data
         nsta  = len(xy)
         # number of elements
