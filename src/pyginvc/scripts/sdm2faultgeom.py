@@ -7,7 +7,7 @@ Created on Thu Jan 18 19:49:21 2024
 """
 
 import numpy as np
-import geotools as gt
+import pyginvc.libs.geotools as gt
 import argparse
 
 def gen_fautgeom(origin, leng, width, dep, strike, dip, ss, ds, op):

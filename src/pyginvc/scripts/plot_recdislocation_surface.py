@@ -8,10 +8,10 @@
 # MOD by Zhao Bin, change zip() to list(zip()). Sep. 2, 2019.
 
 
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from matplotlib import animation
 import matplotlib
+from matplotlib import animation
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from pyginvc.Geometry.Fault import Fault
 import numpy as np
 import sys, os, argparse
