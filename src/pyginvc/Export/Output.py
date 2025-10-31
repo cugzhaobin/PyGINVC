@@ -5,7 +5,7 @@ import logging, h5py
 import os, time, glob
 import numpy as np
 from numpy import column_stack, mat, array, hstack, vstack, transpose, zeros
-from numpy import deg2rad, sin, cos, complex, exp, zeros, hstack, vstack, sqrt, diag
+from numpy import deg2rad, sin, cos, exp, zeros, hstack, vstack, sqrt, diag
 from pyginvc.Geometry.Fault import Fault
 from pyginvc.Geometry.Triangle import Triangle
 from pyginvc.Forward.TriForward import TriForward

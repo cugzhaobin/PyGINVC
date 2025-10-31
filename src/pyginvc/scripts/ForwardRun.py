@@ -50,9 +50,7 @@ class DispForward:
 
         Forward(dict_fault, dict_data, dict_green, dict_weight)
 
-
-
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description="Forward modelling of surface displacements from rectangular dislocation model.")
     parser.add_argument('--cfgfile', type=str, required=True, help='')
     
@@ -60,3 +58,8 @@ if __name__ == '__main__':
     cfgfile = args.cfgfile
     slipinv = DispForward(cfgfile)
     slipinv.run_fwd()
+    
+
+
+if __name__ == '__main__':
+    main()

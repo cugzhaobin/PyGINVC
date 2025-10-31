@@ -365,7 +365,7 @@ class Fault(object):
     
             
             # assign to flt_elem_all
-            flt_elem_all[i,:] = array([leng, wid, dip, strk, ss, ds, op, ts, rake, gll.imag, gll.real, bottom, glr.imag, glr.real, bottom, gur.imag, gur.real, top, gul.imag, gul.real, top, gll_e, gll_n, gll_u, glr_e, glr_n, glr_u, gur_e, gur_n, gur_u, gul_e, gul_n, gul_u])
+            flt_elem_all[i,:] = np.array([leng, wid, dip, strk, ss, ds, op, ts, rake, gll.imag, gll.real, bottom, glr.imag, glr.real, bottom, gur.imag, gur.real, top, gul.imag, gul.real, top, gll_e, gll_n, gll_u, glr_e, glr_n, glr_u, gur_e, gur_n, gur_u, gul_e, gul_n, gul_u])
     
         return flt_elem_all
 

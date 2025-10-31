@@ -1,0 +1,32 @@
+Metadata-Version: 2.4
+Name: pyginvc
+Version: 0.1.0
+Summary: a python program used for fault slip inversion from geodetic observations (GNSS, InSAR, leveling) and forward simulation.
+Author-email: Bin Zhao <zhaobin@cgps.ac.cn>
+Maintainer-email: Bin Zhao <zhaobin@cgps.ac.cn>
+License: MIT
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+
+# PyGINVC
+PyGINVC is a python program used for fault slip inversion from geodetic observations (GNSS, InSAR, leveling) and forward simulation. It supports two kinds of fault geometeies, triangular and rectangular patches. It also can invert for the optimal fault geometry using a uniform rectangular patch.
+
+## Download and install
+Run the following commands on the Terimal, set the environments for PYTHONPATH and PATH.
+
+git clone git@github.com:cugzhaobin/PyGINVC.git
+
+cd PyGINVC
+
+pip install -e .
+
+## Compile the fortran code.
+cd PyGINVC/pyginvc/Greens/okada
+f2py -c okadaio.f -m okadaio
+ln -s *.so ..
+
+## Run
+Edit yaml configure files for slip inversion or forward simulation
+SlipInversion.py --cfgfile config.yaml
+
+### yaml template file is in scricpts.
