@@ -9,7 +9,14 @@ def get_dim(faultfile):
     nsegs = int(len(dat)/ndeps)
     return nsegs, ndeps
 
-def main(args):
+def main():
+    parser = argparse.ArgumentParser(description="Invert slip distribution on rectangular patches from geodetic data.")
+    parser.add_argument('--faultfile', type=str, required=True, help='')
+    parser.add_argument('--top_dip', type=float, required=True, help='')
+    parser.add_argument('--bottom_dip', type=float, required=True, help='')
+    parser.add_argument('--nsegs', type=int, default=0, required=False, help='')
+    parser.add_argument('--ndeps', type=int, default=0, required=False, help='')
+    args      = parser.parse_args()
     faultfile = args.faultfile
     top_dip   = args.top_dip
     bot_dip   = args.bottom_dip
@@ -61,11 +68,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Invert slip distribution on rectangular patches from geodetic data.")
-    parser.add_argument('--faultfile', type=str, required=True, help='')
-    parser.add_argument('--top_dip', type=float, required=True, help='')
-    parser.add_argument('--bottom_dip', type=float, required=True, help='')
-    parser.add_argument('--nsegs', type=int, default=0, required=False, help='')
-    parser.add_argument('--ndeps', type=int, default=0, required=False, help='')
-    args = parser.parse_args()
-    main(args)
+    main()

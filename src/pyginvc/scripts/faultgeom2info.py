@@ -4,9 +4,17 @@
 # Rewritten by Zhao Bin, April 6, 2021
 
 from pyginvc.Geometry.Fault import Fault
-import sys, argparse
+import argparse
 
-def main(args):
+def main():
+    parser = argparse.ArgumentParser(description="Convert FaultGeom file to Coulomb input file.")
+    parser.add_argument('--faultfile', type=str, required=True, 
+            help='Width depth dip lat0 lon1 lat2 lon2 strike-slip dip-slip tensile')
+    parser.add_argument('--display', type=str, required=False, default='simple',
+            help='simple/complex')
+    parser.add_argument('--origin', default=[], help='[lat, lon]', nargs=2, type=float)
+    args    = parser.parse_args()
+
     fltfile = args.faultfile
     display = args.display
     origin  = args.origin
@@ -42,11 +50,4 @@ def main(args):
                     ))
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Convert FaultGeom file to Coulomb input file.")
-    parser.add_argument('--faultfile', type=str, required=True, 
-            help='Width depth dip lat0 lon1 lat2 lon2 strike-slip dip-slip tensile')
-    parser.add_argument('--display', type=str, required=False, default='simple',
-            help='simple/complex')
-    parser.add_argument('--origin', default=[], help='[lat, lon]', nargs=2, type=float)
-    args = parser.parse_args()
-    main(args)
+    main()

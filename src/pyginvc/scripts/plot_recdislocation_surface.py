@@ -38,7 +38,15 @@ cdict = {'red': ((0., 1, 1),
                   (1, 0, 0))}
 whitejet = matplotlib.colors.LinearSegmentedColormap('whitejet',cdict,256)
 
-def main(args):
+def main():
+    parser = argparse.ArgumentParser(description="plot 3D slip distribution.")
+    parser.add_argument('--faultfile', type=str, required=True, help='faultgeom format')
+    parser.add_argument('--aftershock', type=str, required=False, default="", help='aftershock data')
+    parser.add_argument('--coordtype', type=str, required=False, default='llh', help='llh/enu')
+    parser.add_argument('--showindex', type=bool, required=False, default=False, help='False/True')
+    parser.add_argument('--azimuth', type=float, required=False, default=-40, help='azimuth in degree')
+    parser.add_argument('--elevation', type=float, required=False, default=40, help='elevation in degree')
+    args = parser.parse_args()
     
     faultfile         = args.faultfile
     afsfile           = args.aftershock
@@ -128,13 +136,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="plot 3D slip distribution.")
-    parser.add_argument('--faultfile', type=str, required=True, help='faultgeom format')
-    parser.add_argument('--aftershock', type=str, required=False, default="", help='aftershock data')
-    parser.add_argument('--coordtype', type=str, required=False, default='llh', help='llh/enu')
-    parser.add_argument('--showindex', type=bool, required=False, default=False, help='False/True')
-    parser.add_argument('--azimuth', type=float, required=False, default=-40, help='azimuth in degree')
-    parser.add_argument('--elevation', type=float, required=False, default=40, help='elevation in degree')
-    args = parser.parse_args()
-    main(args)
-
+    main()

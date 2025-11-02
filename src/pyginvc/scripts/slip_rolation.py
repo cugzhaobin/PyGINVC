@@ -4,7 +4,12 @@ from numpy import sin, cos
 import argparse
 
 
-def main(args):
+def main():
+    parser = argparse.ArgumentParser(description="Convert FaultGeom file to VTK format.")
+    parser.add_argument('--faultfile', type=str, required=True, help='Width depth dip lat0 lon1 lat2 lon2 strike-slip dip-slip tensile')
+    parser.add_argument('--angle', default=0, help='degree', type=float)
+    args = parser.parse_args()
+
     fltfile = args.faultfile
     angle   = args.angle
     beta    = np.deg2rad(angle)
@@ -27,8 +32,4 @@ def main(args):
         np.savetxt('slip_new.tri', out2, fmt='%4d %4d %4d %10.3f %10.3f %10.3f')
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Convert FaultGeom file to VTK format.")
-    parser.add_argument('--faultfile', type=str, required=True, help='Width depth dip lat0 lon1 lat2 lon2 strike-slip dip-slip tensile')
-    parser.add_argument('--angle', default=0, help='degree', type=float)
-    args = parser.parse_args()
-    main(args)
+    main()

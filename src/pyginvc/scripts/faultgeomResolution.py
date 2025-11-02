@@ -7,7 +7,13 @@ import h5py
 import numpy as np
 from   scipy.linalg import inv, pinv
 
-def main(args):
+def main():
+    parser = argparse.ArgumentParser(description="Compute model resolution matrix and output to FaultGeom format.")
+    parser.add_argument('--faultfile', type=str, required=True, help='Width depth dip lat0 lon1 lat2 lon2 strike-slip dip-slip tensile')
+    parser.add_argument('--green', required=True, type=str)
+    parser.add_argument('--smooth', required=True, type=str)
+    args    = parser.parse_args()
+
     fltfile = args.faultfile
     fltgeom = np.loadtxt(args.faultfile)
     G       = np.empty(0)
@@ -25,9 +31,4 @@ def main(args):
     np.savetxt('aaa', newout)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Compute model resolution matrix and output to FaultGeom format.")
-    parser.add_argument('--faultfile', type=str, required=True, help='Width depth dip lat0 lon1 lat2 lon2 strike-slip dip-slip tensile')
-    parser.add_argument('--green', required=True, type=str)
-    parser.add_argument('--smooth', required=True, type=str)
-    args = parser.parse_args()
-    main(args)
+    main()

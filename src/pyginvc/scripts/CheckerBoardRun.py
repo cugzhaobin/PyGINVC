@@ -19,7 +19,13 @@ from pyginvc.Inversion.GeoInversion import GeoInversion
 import os, yaml, argparse, random, time
 import numpy as np
 
-def main(args):
+def main():
+    parser = argparse.ArgumentParser(description="Run checkerboard test.")
+    parser.add_argument('--ns', type=int, required=True, help='number of patches along strike')
+    parser.add_argument('--nd', type=int, required=True, help='number of patches along dip')
+    parser.add_argument('--std', type=float, required=True, help='uncertainties of obserbation')
+    parser.add_argument('--cfg', type=str, required=True, help='yaml file')
+    args = parser.parse_args()
     
     cfgfile = args.cfg
     with open(cfgfile, 'r') as fid:
@@ -99,10 +105,4 @@ def main(args):
     
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Run checkerboard test.")
-    parser.add_argument('--ns', type=int, required=True, help='number of patches along strike')
-    parser.add_argument('--nd', type=int, required=True, help='number of patches along dip')
-    parser.add_argument('--std', type=float, required=True, help='uncertainties of obserbation')
-    parser.add_argument('--cfg', type=str, required=True, help='yaml file')
-    args = parser.parse_args()
-    main(args)
+    main()

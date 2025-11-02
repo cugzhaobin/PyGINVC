@@ -84,7 +84,19 @@ def plot_gps(ax, gpsfile, scale=1000):
     else:
         print('Input gps file does not exist!')
 
-def main(args):
+def main():
+    parser = argparse.ArgumentParser(description="Plot 3D slip distribution.")
+    parser.add_argument('--faultfile', type=str, required=True, help='Fault geometry file')
+    parser.add_argument('--aftershock', type=str, required=False, default="", help='Aftershock data file')
+    parser.add_argument('--coordtype', type=str, required=False, default='llh', help='Coordinate system: llh/enu')
+    parser.add_argument('--showindex', type=bool, required=False, default=False, help='Show patch indices: False/True')
+    parser.add_argument('--azimuth', type=float, required=False, default=-40, help='Azimuth in degrees')
+    parser.add_argument('--elevation', type=float, required=False, default=40, help='Elevation in degrees')
+    parser.add_argument('--sarfile', type=str, required=False, default="", help='InSAR file')
+    parser.add_argument('--gpsfile', type=str, required=False, default="", help='GPS file')
+    parser.add_argument('--savefig', type=bool, required=False, default=False, help='Y/N save figure')
+    args = parser.parse_args()
+
     faultfile = args.faultfile
     afsfile   = args.aftershock
     coordtype = args.coordtype
@@ -172,15 +184,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Plot 3D slip distribution.")
-    parser.add_argument('--faultfile', type=str, required=True, help='Fault geometry file')
-    parser.add_argument('--aftershock', type=str, required=False, default="", help='Aftershock data file')
-    parser.add_argument('--coordtype', type=str, required=False, default='llh', help='Coordinate system: llh/enu')
-    parser.add_argument('--showindex', type=bool, required=False, default=False, help='Show patch indices: False/True')
-    parser.add_argument('--azimuth', type=float, required=False, default=-40, help='Azimuth in degrees')
-    parser.add_argument('--elevation', type=float, required=False, default=40, help='Elevation in degrees')
-    parser.add_argument('--sarfile', type=str, required=False, default="", help='InSAR file')
-    parser.add_argument('--gpsfile', type=str, required=False, default="", help='GPS file')
-    parser.add_argument('--savefig', type=bool, required=False, default=False, help='Y/N save figure')
-    args = parser.parse_args()
-    main(args)
+    main()

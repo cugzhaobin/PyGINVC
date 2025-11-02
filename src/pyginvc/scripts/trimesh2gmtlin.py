@@ -4,7 +4,13 @@ from pyginvc.Geometry.Triangle import Triangle
 import argparse
 import numpy as np
 
-def main(args):
+def main():
+    parser = argparse.ArgumentParser(description="Convert vertex/element file to gmtlin")
+    parser.add_argument('--vertex', type=str, required=True, help='')
+    parser.add_argument('--element', type=str, required=True, help='')
+    parser.add_argument('--coordtype', type=str, required=True, help='llh/enu')
+    args = parser.parse_args()
+
     vertexfile  = args.vertex
     elementfile = args.element
     coordtype   = args.coordtype
@@ -33,9 +39,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Convert vertex/element file to gmtlin")
-    parser.add_argument('--vertex', type=str, required=True, help='')
-    parser.add_argument('--element', type=str, required=True, help='')
-    parser.add_argument('--coordtype', type=str, required=True, help='llh/enu')
-    args = parser.parse_args()
-    main(args)
+    main()

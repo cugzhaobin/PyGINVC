@@ -4,10 +4,15 @@
 # Rewritten by Zhao Bin, April 6, 2021
 
 from pyginvc.Geometry.Triangle import Triangle
-import sys, argparse
+import argparse
 
-def main(args):
-    print(args)
+def main():
+    parser = argparse.ArgumentParser(description="Compute moment and magnitude from triangular dislocation model.")
+    parser.add_argument('--vertex', type=str, required=True, help='')
+    parser.add_argument('--element', type=str, required=True, help='idx1 idx2 idx3 strike_slip dip_slip ex_slip in mm')
+    parser.add_argument('--shear_modulus', type=float, required=False, default=3e10, help='shear modulus in Pa')
+    args = parser.parse_args()
+
     vertex       = args.vertex
     element      = args.element
     shearmodulus = args.shear_modulus
@@ -16,9 +21,4 @@ def main(args):
     print(Mo, Mw)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Compute moment and magnitude from triangular dislocation model.")
-    parser.add_argument('--vertex', type=str, required=True, help='')
-    parser.add_argument('--element', type=str, required=True, help='idx1 idx2 idx3 strike_slip dip_slip ex_slip in mm')
-    parser.add_argument('--shear_modulus', type=float, required=False, default=3e10, help='shear modulus in Pa')
-    args = parser.parse_args()
-    main(args)
+    main()

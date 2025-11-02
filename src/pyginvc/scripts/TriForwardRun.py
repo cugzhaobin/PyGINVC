@@ -59,11 +59,13 @@ class DispForward:
         out.OutputSolution()
         out.archive_outfile()
 
-
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description="Forward modelling of surface displacements from triangular dislocation model.")
     parser.add_argument('--cfgfile', type=str, required=True, help='')
     
     args    = parser.parse_args()
     slipinv = DispForward(cfgfile)
     slipinv.run_fwd()
+
+if __name__ == '__main__':
+    main()

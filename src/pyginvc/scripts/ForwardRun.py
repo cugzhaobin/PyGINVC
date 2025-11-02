@@ -59,7 +59,5 @@ def main():
     slipinv = DispForward(cfgfile)
     slipinv.run_fwd()
     
-
-
 if __name__ == '__main__':
     main()

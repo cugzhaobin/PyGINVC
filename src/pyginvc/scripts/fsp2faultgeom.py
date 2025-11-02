@@ -7,7 +7,7 @@ Created on Thu Jan 18 19:49:21 2024
 """
 
 import numpy as np
-import geotools as gt
+from pyginvc.libs import geotools as gt
 import argparse
 
 def gen_fautgeom(origin, leng, width, dep, strike, dip, ss, ds, op):
@@ -57,7 +57,11 @@ def read_geom_param(fspfile):
             dip    = float(line.split()[8])
     return length, width, strike, dip
 
-def main(args):
+def main():
+    parser = argparse.ArgumentParser(description="Convert USGS coseismic slip model in fsp file to faultgeom file.")
+    parser.add_argument('--fsp_file', type=str, required=True)
+    args      = parser.parse_args()
+
     fspfile   = args.fsp_file
     dat       = np.genfromtxt(fspfile, comments="%")
     faultgeom = np.zeros((len(dat),10))
@@ -81,7 +85,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Convert USGS coseismic slip model in fsp file to faultgeom file.")
-    parser.add_argument('--fsp_file', type=str, required=True)
-    args = parser.parse_args()
-    main(args)
+    main()

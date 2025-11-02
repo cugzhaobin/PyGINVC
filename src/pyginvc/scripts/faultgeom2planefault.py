@@ -1,6 +1,8 @@
 #!/usr/bin/env python
+from pyginvc.Geometry.Fault import Fault
 import argparse
 import numpy as np
+
 def FaultGeom2slip2D(dis_geom_grid, slip, nseg, ndep):
     '''
     convert FaultGeom fault slip model into 2D: along strike and along dip
@@ -86,8 +88,12 @@ def FaultGeom2slip2D(dis_geom_grid, slip, nseg, ndep):
     fid4.close()
 
 # main program
-def main(args):
-    from pyginvc.Geometry.Fault import Fault
+def main():
+    parser = argparse.ArgumentParser(description="Convert FaultGeom file to 2D along-strike/along dip coordinate system.")
+    parser.add_argument('--faultfile', type=str, required=True, help='Width depth dip lat0 lon1 lat2 lon2 strike-slip dip-slip tensile')
+    parser.add_argument('--nseg', required=True, type=int)
+    parser.add_argument('--ndep', required=True, type=int)
+    args = parser.parse_args()
 
     faultfile = args.faultfile
     nseg      = args.nseg
@@ -100,9 +106,4 @@ def main(args):
     FaultGeom2slip2D(flt.dis_geom_grid, slip, nseg, ndep)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Convert FaultGeom file to 2D along-strike/along dip coordinate system.")
-    parser.add_argument('--faultfile', type=str, required=True, help='Width depth dip lat0 lon1 lat2 lon2 strike-slip dip-slip tensile')
-    parser.add_argument('--nseg', required=True, type=int)
-    parser.add_argument('--ndep', required=True, type=int)
-    args = parser.parse_args()
-    main(args)
+    main()

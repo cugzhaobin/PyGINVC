@@ -127,8 +127,7 @@ class SlipInversion:
             View.plot_obs_mod(outpath+'/solutions.h5', scale=dict_export['vecscale'])
             View.plot_slip_3d(outpath+'/solutions.h5')
 
-
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description="Invert slip distribution on triangular patches from geodetic data.")
     parser.add_argument('--cfgfile', type=str, required=True, help='')
     parser.add_argument('--sarfile', type=str, default=None, required=False, help='InSAR data')
@@ -139,3 +138,6 @@ if __name__ == '__main__':
     args    = parser.parse_args()
     slipinv = SlipInversion(args)
     slipinv.run_inv()
+
+if __name__ == '__main__':
+    main()

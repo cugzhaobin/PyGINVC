@@ -9,7 +9,19 @@ import numpy as np
 import os, argparse
 from pyginvc.Geometry.Triangle import Triangle
 
-def main(args):
+def main():
+    parser = argparse.ArgumentParser(description="plot 3D slip distribution.")
+    parser.add_argument('--vertex', type=str, required=True, help='index lat lon dep(up positive)')
+    parser.add_argument('--element', type=str, required=True, help='indx1 indx2 indx3 strike-slip dip-slip open-slip')
+    parser.add_argument('--aftershock', type=str, required=False, default="", help='aftershock data')
+    parser.add_argument('--coordtype', type=str, required=False, default='llh', help='llh/enu')
+    parser.add_argument('--azimuth', type=float, required=False, default=-40, help='azimuth in degree')
+    parser.add_argument('--elevation', type=float, required=False, default=40, help='elevation in degree')
+    parser.add_argument('--sarfile', type=str, required=False, default="", help='InSAR file')
+    parser.add_argument('--gpsfile', type=str, required=False, default="", help='GPS file')
+    parser.add_argument('--savefig', type=bool, required=False, default=False, help='Y/N save figure')
+    args = parser.parse_args()
+
     # get parameters
     vertexfile  = args.vertex
     elementfile = args.element
@@ -81,15 +93,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="plot 3D slip distribution.")
-    parser.add_argument('--vertex', type=str, required=True, help='index lat lon dep(up positive)')
-    parser.add_argument('--element', type=str, required=True, help='indx1 indx2 indx3 strike-slip dip-slip open-slip')
-    parser.add_argument('--aftershock', type=str, required=False, default="", help='aftershock data')
-    parser.add_argument('--coordtype', type=str, required=False, default='llh', help='llh/enu')
-    parser.add_argument('--azimuth', type=float, required=False, default=-40, help='azimuth in degree')
-    parser.add_argument('--elevation', type=float, required=False, default=40, help='elevation in degree')
-    parser.add_argument('--sarfile', type=str, required=False, default="", help='InSAR file')
-    parser.add_argument('--gpsfile', type=str, required=False, default="", help='GPS file')
-    parser.add_argument('--savefig', type=bool, required=False, default=False, help='Y/N save figure')
-    args = parser.parse_args()
-    main(args)
+    main()

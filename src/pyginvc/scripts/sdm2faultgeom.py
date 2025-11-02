@@ -45,7 +45,13 @@ def gen_fautgeom(origin, leng, width, dep, strike, dip, ss, ds, op):
     geom    = np.array([width, depth, dip+180, slatlon[0,0], slatlon[0,1], elatlon[0,0], elatlon[0,1], ss, ds, op])
     return geom
 
-def main(args):
+def main():
+    parser = argparse.ArgumentParser(description="Convert SDM file to faultgeom file.")
+    parser.add_argument('--sdm_file', type=str, required=True)
+    parser.add_argument('--ss_sign', type=float, default=1.0, required=False)
+    parser.add_argument('--ds_sign', type=float, default=-1.0, required=False)
+    args = parser.parse_args()
+
     sdmfile   = args.sdm_file
     dat       = np.genfromtxt(sdmfile, skip_header=0)
     faultgeom = np.zeros((len(dat),10))
@@ -79,9 +85,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Convert SDM file to faultgeom file.")
-    parser.add_argument('--sdm_file', type=str, required=True)
-    parser.add_argument('--ss_sign', type=float, default=1.0, required=False)
-    parser.add_argument('--ds_sign', type=float, default=-1.0, required=False)
-    args = parser.parse_args()
-    main(args)
+    main()

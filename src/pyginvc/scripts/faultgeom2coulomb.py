@@ -7,12 +7,13 @@ from pyginvc.Geometry.Fault import Fault
 import sys, argparse
 
 def main(args):
+    parser = argparse.ArgumentParser(description="Convert FaultGeom file to Coulomb input file.")
+    parser.add_argument('--faultfile', type=str, required=True, help='Width depth dip lat0 lon1 lat2 lon2 strike-slip dip-slip tensile')
+    args    = parser.parse_args()
+
     fltfile = args.faultfile
     flt     = Fault(fltfile, 1, 1, False)
     flt.FaultGeom2Coulomb()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Convert FaultGeom file to Coulomb input file.")
-    parser.add_argument('--faultfile', type=str, required=True, help='Width depth dip lat0 lon1 lat2 lon2 strike-slip dip-slip tensile')
-    args = parser.parse_args()
-    main(args)
+    main()

@@ -4,7 +4,7 @@
 
 from pyginvc.Forward.VolForward import VolForward
 import yaml, os, sys
-import logging
+import logging, argparse
 
 class DispForward:
     '''
@@ -95,13 +95,14 @@ class DispForward:
                                    {:10.3f} {:10.3f} {} {:10.3f} {:10.3f}\n'.format(
                         llh_gps[i,1], llh_gps[i,0], mod[i,0], mod[i,1], 0.0, 0.0, 0.0, fwd.data.station_gps[i], mod[i,2], 0.0))
                 
-
-
-if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        logging.warning('Please input configure file in YAML format')
-        sys.exit()
-
-    cfgfile = sys.argv[1]
+def main():
+    parser = argparse.ArgumentParser(description="Forward simulation of Mogi model.")
+    parser.add_argument('--cfgfile', type=str, required=True, help='')
+    args    = parser.parse_args()
+    cfgfile = args.cfgfile
     dspfwd  = DispForward(cfgfile)
     dspfwd.run_fwd()
+    
+
+if __name__ == '__main__':
+    main()
