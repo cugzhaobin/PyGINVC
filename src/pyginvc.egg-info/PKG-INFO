@@ -7,6 +7,11 @@ Maintainer-email: Bin Zhao <zhaobin@cgps.ac.cn>
 License: MIT
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: matplotlib
+Requires-Dist: pyproj
+Requires-Dist: h5py
 
 # PyGINVC
 PyGINVC is a python program used for fault slip inversion from geodetic observations (GNSS, InSAR, leveling) and forward simulation. It supports two kinds of fault geometeies, triangular and rectangular patches. It also can invert for the optimal fault geometry using a uniform rectangular patch.

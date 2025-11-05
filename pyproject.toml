@@ -21,8 +21,8 @@ dependencies = [
     "matplotlib",
     "pyproj",
     "h5py",
-    "logging",
-    "emcee",
+#   "logging",
+#   "emcee",
 ]
 
 [project.scripts]

@@ -5,6 +5,7 @@ src/pyginvc.egg-info/PKG-INFO
 src/pyginvc.egg-info/SOURCES.txt
 src/pyginvc.egg-info/dependency_links.txt
 src/pyginvc.egg-info/entry_points.txt
+src/pyginvc.egg-info/requires.txt
 src/pyginvc.egg-info/top_level.txt
 src/pyginvc/Export/Output.py
 src/pyginvc/Export/View.py
@@ -59,6 +60,7 @@ src/pyginvc/Laplacian/__init__.py
 src/pyginvc/libs/__init__.py
 src/pyginvc/libs/geotools.py
 src/pyginvc/libs/gpstime.py
+src/pyginvc/libs/poly3d.py
 src/pyginvc/libs/sar_covariance.py
 src/pyginvc/scripts/CheckerBoardRun.py
 src/pyginvc/scripts/CheckerBoardRunOld.py
