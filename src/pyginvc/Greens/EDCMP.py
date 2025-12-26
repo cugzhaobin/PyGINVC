@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # Written by Zhao Bin, when he is at UC Berkeley. Mar 7 2016
 # Revised by Zhao Bin, Apr. 26, 2019. to Object Oriented Code.
-
+import h5py, os
 import numpy as np
 import subprocess, logging
 logging.basicConfig(
@@ -25,7 +25,6 @@ class EDCMP(object):
             dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
         '''
         
-        import h5py, os
         greenfile = dict_green['greenfile']
         if greenfile == "":
             self.GenGreens(flt, data, dict_green)
@@ -112,7 +111,9 @@ class EDCMP(object):
         
         self.G     = G
         self.G_sar = G_sar
-
+        self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim)
+        self.G_sar_ramp = self.MakeGSARRamp(xy_sar, ndim)
+        
         # print the status
         logging.info('Green function for geodetic data are computed using Okada model.')
         
@@ -162,7 +163,8 @@ class EDCMP(object):
             if bool(ss) is True:
                 edcmp_flt[i,1] = 1.0
                 edcmp_flt[i,9] = 0
-                gen_edcmp_inp(edcmp_flt[i], xy[:,1], xy[:,0], np.zeros(len(xy)), grndir, grn_ssfile, grn_dsfile, grn_clfile)
+                gen_edcmp_inp(edcmp_flt[i], xy[:,1], xy[:,0], np.zeros(len(xy)), 
+                              grndir, grn_ssfile, grn_dsfile, grn_clfile)
                 subprocess.call("echo tmp.inp | edcmp", shell=True)
                 if gdim == 3:
                     dat = np.genfromtxt('tmp.disp', usecols=[2,3,4], comments='#')
@@ -177,7 +179,8 @@ class EDCMP(object):
             if bool(ds) is True:
                 edcmp_flt[i,1] = 1.0
                 edcmp_flt[i,9] = 90
-                gen_edcmp_inp(edcmp_flt[i], xy[:,1], xy[:,0], np.zeros(len(xy)), grndir, grn_ssfile, grn_dsfile, grn_clfile)
+                gen_edcmp_inp(edcmp_flt[i], xy[:,1], xy[:,0], np.zeros(len(xy)), 
+                              grndir, grn_ssfile, grn_dsfile, grn_clfile)
                 subprocess.call("echo tmp.inp | edcmp", shell=True)
                 if gdim == 3:
                     dat = np.genfromtxt('tmp.disp', usecols=[2,3,4])
@@ -191,7 +194,8 @@ class EDCMP(object):
             if bool(op) is True:
                 edcmp_flt[i,1] = 0.0
                 edcmp_flt[i,9] = 0
-                gen_edcmp_inp(edcmp_flt[i], xy[:,1], xy[:,0], np.zeros(len(xy)), grndir, grn_ssfile, grn_dsfile, grn_clfile)
+                gen_edcmp_inp(edcmp_flt[i], xy[:,1], xy[:,0], np.zeros(len(xy)), 
+                              grndir, grn_ssfile, grn_dsfile, grn_clfile)
                 subprocess.call("echo tmp.inp | edcmp", shell=True)
                 if gdim == 3:
                     dat = np.genfromtxt('tmp.disp', usecols=[2,3,4])

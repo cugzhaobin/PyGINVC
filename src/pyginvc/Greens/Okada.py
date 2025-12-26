@@ -107,6 +107,8 @@ class Okada(BaseGreen):
         
         self.G     = G
         self.G_sar = G_sar
+        self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim)
+        self.G_sar_ramp = self.MakeGSARRamp(xy_sar, ndim)
 
         # print the status
         if verbose:

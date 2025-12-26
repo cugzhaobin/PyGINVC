@@ -110,7 +110,9 @@ class Meade(BaseGreen):
         logging.info('Green function for geodetic data are computed using triangular dislocation model.')
         
         self.G     = G
-        self.G_sar = G_sar        
+        self.G_sar = G_sar
+        self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim)
+        self.G_sar_ramp = self.MakeGSARRamp(xy_sar, ndim) 
  
 
     def MakeGGPS_Tridisloc(self, node, element, xy, mu, nu, ss, ds, op, gdim):
