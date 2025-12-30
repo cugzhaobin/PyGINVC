@@ -24,6 +24,7 @@ faultgeomResolution.py = pyginvc.scripts.faultgeomResolution:main
 fsp2faultgeom.py = pyginvc.scripts.fsp2faultgeom:main
 make_faultgeom.py = pyginvc.scripts.make_faultgeom:main
 plot_faultgeom.py = pyginvc.scripts.plot_faultgeom:main
+plot_trimesh.py = pyginvc.scripts.plot_trimesh:main
 sdm2faultgeom.py = pyginvc.scripts.sdm2faultgeom:main
 slip_rolation.py = pyginvc.scripts.slip_rolation:main
 trigeom2vtk.py = pyginvc.scripts.trigeom2vtk:main

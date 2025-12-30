@@ -108,15 +108,14 @@ class BaseGreen(object):
             h5.create_dataset('G_sar', data=Gsarnew, compression='gzip')
         logging.info('Rotate Greens function finished.')
 
-    def MakeGSARRamp(self, xy, numlist):
-        assert len(xy) == sum(numlist)
-        G = np.ones((len(xy), len(numlist)*3))
+    def MakeGSARRamp(self, xy, dim):
+        G = np.ones((len(xy),3))
         for i in range(len(xy)):
             G[i,1] = xy[i,0]
             G[i,2] = xy[i,1]
             
-    def MakeGGPSRamp(self, xy, dim  ):
-        G = np.ones((len(xy), 3))
+    def MakeGGPSRamp(self, xy, dim):
+        G = np.ones((3*len(xy), 3))
         for i in range(len(xy)):
             if dim == 2:
                 G[2*i+0] = np.array([1, 0, -xy[i,0]])

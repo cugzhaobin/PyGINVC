@@ -91,7 +91,7 @@ src/pyginvc/scripts/fsp2faultgeom.py
 src/pyginvc/scripts/make_faultgeom.py
 src/pyginvc/scripts/plot_faultgeom.py
 src/pyginvc/scripts/plot_recdislocation_surface.py
-src/pyginvc/scripts/plot_tridislocation_surface.py
+src/pyginvc/scripts/plot_trimesh.py
 src/pyginvc/scripts/sdm2faultgeom.py
 src/pyginvc/scripts/slip_rolation.py
 src/pyginvc/scripts/trigeom2vtk.py

@@ -55,8 +55,9 @@ def main():
     sdmfile   = args.sdm_file
     dat       = np.genfromtxt(sdmfile, skip_header=0)
     faultgeom = np.zeros((len(dat),10))
-    ss_sign   = args.ss_sign
-    ds_sign   = args.ds_sign
+    ss_sign   = float(args.ss_sign)
+    ds_sign   = float(args.ds_sign)
+    print(ds_sign)
     for i in range(len(dat)):
         length = dat[i,6]
         width  = dat[i,5]

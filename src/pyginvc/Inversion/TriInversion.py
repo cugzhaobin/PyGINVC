@@ -157,7 +157,6 @@ class TriInversion(object):
 #                   G2I    = vstack((hstack((W.dot(G), zeros((len_geod,3)))), wsar*G_sar, hstack((G_laps, zeros((nf*3,3))))))
                     G2I    = vstack((W.dot(G), wsar*G_sar, G_laps))
                 else:
-                    print(G_sar.shape, G_laps.shape, nf*3)
 #                   G2I    = vstack((wsar*G_sar, hstack((G_laps, zeros((nf*3,3))))))
                     G2I    = vstack((wsar*G_sar, G_laps))
             else:
@@ -175,8 +174,7 @@ class TriInversion(object):
     
             # if constrained linear least square method is used
             if dict_bound['bound_switch']:
-                print(G2I.shape, d2I.shape)
-                res = optimize.lsq_linear(G2I, d2I, (bl, bu), method='bvls', lsmr_tol='auto')
+                res = optimize.lsq_linear(G2I, d2I, (bl, bu), method='bvls')
                 slipb[scount,:] = res.x
                 slip[scount,:] = slipb[scount,:]
                 [m,n] = G2I.shape           
@@ -367,7 +365,6 @@ class TriInversion(object):
         nelems    = 3*nelements
         if sar_switch == True:
             nelems = nelems + 3
-        print(nelems)
 
         bl = np.zeros((nelements,3))
         bu = np.zeros((nelements,3))
@@ -387,7 +384,6 @@ class TriInversion(object):
             nelems    = 3*nelements
             bl[0:nelems] = genfromtxt(slip_lb, usecols = [3,4,5]).reshape(nelems)
             bu[0:nelems] = genfromtxt(slip_ub, usecols = [3,4,5]).reshape(nelems)
-            print(bl, bu)
     
         return bu, bl 
 

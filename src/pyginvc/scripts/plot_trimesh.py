@@ -9,6 +9,15 @@ import numpy as np
 import os, argparse
 from pyginvc.Geometry.Triangle import Triangle
 
+def plot_gps(ax, gpsfile, scale=3000):
+    """Plot aftershocks if the file exists."""
+    if os.path.exists(gpsfile):
+        gps = np.genfromtxt(gpsfile)
+        ax.quiver(gps[:,0], gps[:,1], np.zeros(len(gps)), gps[:,2], gps[:,3], np.zeros(len(gps)), length=0.001)
+    else:
+        print('Input gps file does not exist!')
+
+
 def main():
     parser = argparse.ArgumentParser(description="plot 3D slip distribution.")
     parser.add_argument('--vertex', type=str, required=True, help='index lat lon dep(up positive)')
@@ -80,6 +89,10 @@ def main():
         sar = np.genfromtxt(args.sarfile)
         s   = ax.scatter(sar[:,0], sar[:,1], np.zeros(len(sar)), c=sar[:,2], cmap=plt.cm.rainbow)
         plt.colorbar(s, shrink=0.8, pad=0.1, label='LOS (mm)')
+
+    # plot GPS data
+    if os.path.exists(args.gpsfile):
+        plot_gps(ax, args.gpsfile)
 
     cb.set_label('Total slip (mm)')
     ax.set_xlabel('Longitude')
