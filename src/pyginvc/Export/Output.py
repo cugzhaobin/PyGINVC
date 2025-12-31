@@ -4,8 +4,8 @@
 import logging, h5py
 import os, time, glob
 import numpy as np
-from numpy import column_stack, mat, array, hstack, vstack, transpose, zeros
-from numpy import deg2rad, sin, cos, exp, zeros, hstack, vstack, sqrt, diag
+from numpy import column_stack, array, hstack, vstack, transpose
+from numpy import deg2rad, sin, cos, exp, zeros, diag
 from pyginvc.Geometry.Fault import Fault
 from pyginvc.Geometry.Triangle import Triangle
 from pyginvc.Forward.TriForward import TriForward
@@ -124,122 +124,59 @@ class Output(object):
         None.
 
         '''
-
-        
-        if self.flt.nf*3 < self.sol.slip.shape[1]:
-            slip = self.sol.slip[-1,:-3]
-            sig_slip = self.sol.sig_slip[-1,:-3]
-        else:
-            slip = self.sol.slip[-1]
-            sig_slip = self.sol.sig_slip[-1]
-        slip = slip.reshape(self.flt.nf, 3)
-        sig_slip = sig_slip.reshape(self.flt.nf, 3)
+        nf       = self.flt.nf
+        slip     = self.sol.slip[-1,0:nf*3]
+        sig_slip = self.sol.sig_slip[-1,0:nf*3]
+        slip     = slip.reshape(nf, 3)
+        sig_slip = sig_slip.reshape(nf, 3)
+        total_slip = np.sqrt(slip[:,0]**2 + slip[:,1]**2)
         
         if self.flttype == 'rectangle':
-            with open('ss_slip_llh.gmtlin', 'w') as (fid):
-                for i in range(self.sol.flt.nf):
-                    fid.write('> -Z%f\n' % slip[i, 0])
-                    fid.write('%10.5f %10.5f %10.4f\n' % (self.flt.top_left_llh[(i, 0)],
-                                                          self.flt.top_left_llh[(i, 1)],
-                                                          self.flt.top_left_llh[(i, 2)]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (self.flt.top_right_llh[(i, 0)],
-                                                          self.flt.top_right_llh[(i, 1)],
-                                                          self.flt.top_right_llh[(i, 2)]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (self.flt.bot_right_llh[(i, 0)],
-                                                          self.flt.bot_right_llh[(i, 1)],
-                                                          self.flt.bot_right_llh[(i, 2)]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (self.flt.bot_left_llh[(i, 0)],
-                                                          self.flt.bot_left_llh[(i, 1)],
-                                                          self.flt.bot_left_llh[(i, 2)]))
-     
-            with open('ds_slip_llh.gmtlin', 'w') as (fid):
-                for i in range(self.flt.nf):
-                    fid.write('> -Z%f\n' % slip[i, 1])
-                    fid.write('%10.5f %10.5f %10.4f\n' % (self.flt.top_left_llh[(i, 0)],
-                                                          self.flt.top_left_llh[(i, 1)],
-                                                          self.flt.top_left_llh[(i, 2)]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (self.flt.top_right_llh[(i, 0)],
-                                                          self.flt.top_right_llh[(i, 1)],
-                                                          self.flt.top_right_llh[(i, 2)]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (self.flt.bot_right_llh[(i, 0)],
-                                                          self.flt.bot_right_llh[(i, 1)],
-                                                          self.flt.bot_right_llh[(i, 2)]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (self.flt.bot_left_llh[(i, 0)],
-                                                          self.flt.bot_left_llh[(i, 1)],
-                                                          self.flt.bot_left_llh[(i, 2)]))
-     
-            with open('ts_slip_llh.gmtlin', 'w') as (fid):
-                for i in range(self.flt.nf):
-                    fid.write('> -Z%f\n' % np.sqrt(slip[i, 0]**2+slip[i, 1]**2))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (self.flt.top_left_llh[(i, 0)],
-                                                          self.flt.top_left_llh[(i, 1)],
-                                                          self.flt.top_left_llh[(i, 2)]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (self.flt.top_right_llh[(i, 0)],
-                                                          self.flt.top_right_llh[(i, 1)],
-                                                          self.flt.top_right_llh[(i, 2)]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (self.flt.bot_right_llh[(i, 0)],
-                                                          self.flt.bot_right_llh[(i, 1)],
-                                                          self.flt.bot_right_llh[(i, 2)]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (self.flt.bot_left_llh[(i, 0)],
-                                                          self.flt.bot_left_llh[(i, 1)],
-                                                          self.flt.bot_left_llh[(i, 2)]))
+            self.write_rectangle_slip('ss_slip_llh.gmtlin', slip[:,0])
+            self.write_rectangle_slip('ds_slip_llh.gmtlin', slip[:,1])
+            self.write_rectangle_slip('ts_slip_llh.gmtlin', total_slip)
+            
         if self.flttype == 'triangle':
-            v = self.flt.vertex_llh[:,[1,0,2]]
-            e = self.flt.element-1
-            with open('ss_slip_llh.gmtlin', 'w') as (fid):
-                for i in range(self.sol.flt.nf):
-                    fid.write('> -Z%f\n' % slip[i, 0])
-                    fid.write('%10.5f %10.5f %10.4f\n' % (v[e[i,0],0],
-                                                          v[e[i,0],1],
-                                                          v[e[i,0],2]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (v[e[i,1],0],
-                                                          v[e[i,1],1],
-                                                          v[e[i,1],2]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (v[e[i,2],0],
-                                                          v[e[i,2],1],
-                                                          v[e[i,2],2]))
-     
-            with open('ds_slip_llh.gmtlin', 'w') as (fid):
-                for i in range(self.flt.nf):
-                    fid.write('> -Z%f\n' % slip[i, 1])
-                    fid.write('%10.5f %10.5f %10.4f\n' % (v[e[i,0],0],
-                                                          v[e[i,0],1],
-                                                          v[e[i,0],2]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (v[e[i,1],0],
-                                                          v[e[i,1],1],
-                                                          v[e[i,1],2]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (v[e[i,2],0],
-                                                          v[e[i,2],1],
-                                                          v[e[i,2],2]))
-     
-            with open('sig_ds_llh.gmtlin', 'w') as (fid):
-                for i in range(self.flt.nf):
-                    fid.write('> -Z%f\n' % sig_slip[i, 1])
-                    fid.write('%10.5f %10.5f %10.4f\n' % (v[e[i,0],0],
-                                                          v[e[i,0],1],
-                                                          v[e[i,0],2]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (v[e[i,1],0],
-                                                          v[e[i,1],1],
-                                                          v[e[i,1],2]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (v[e[i,2],0],
-                                                          v[e[i,2],1],
-                                                          v[e[i,2],2]))
-
-            with open('ts_slip_llh.gmtlin', 'w') as (fid):
-                for i in range(self.flt.nf):
-                    fid.write('> -Z%f\n' % np.sqrt(slip[i, 0]**2+slip[i, 1]**2))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (v[e[i,0],0],
-                                                          v[e[i,0],1],
-                                                          v[e[i,0],2]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (v[e[i,1],0],
-                                                          v[e[i,1],1],
-                                                          v[e[i,1],2]))
-                    fid.write('%10.5f %10.5f %10.4f\n' % (v[e[i,2],0],
-                                                          v[e[i,2],1],
-                                                          v[e[i,2],2]))
+            self.write_triangle_slip('ss_slip_llh.gmtlin', slip[:,0])
+            self.write_triangle_slip('ds_slip_llh.gmtlin', slip[:,1])
+            self.write_triangle_slip('ts_slip_llh.gmtlin', total_slip)
+            
         # print the status
         logging.info('Fault slip distribution is ouput in geophysical system.')
-        return
+    
+    def write_rectangle_slip(self, filename, value):
+        nf       = self.flt.nf
+        all_data = []
+        
+        for i in range(nf):
+            all_data.append(f'>-Z{value[i]:.3f}')
+            tl = self.flt.top_left_llh[i]
+            tr = self.flt.top_right_llh[i]
+            br = self.flt.bot_right_llh[i]
+            bl = self.flt.bot_left_llh[i]
+            
+            all_data.append(f'{tl[0]:10.3f} {tl[1]:10.3f} {tl[2]:10.3f}')
+            all_data.append(f'{tr[0]:10.3f} {tr[1]:10.3f} {tr[2]:10.3f}')
+            all_data.append(f'{br[0]:10.3f} {br[1]:10.3f} {br[2]:10.3f}')
+            all_data.append(f'{bl[0]:10.3f} {bl[1]:10.3f} {bl[2]:10.3f}')
+        
+        header = f'# Rectangle fault slip model'
+        np.savetxt(filename, all_data, fmt='%s', header=header)
+    
+    def write_triangle_slip(self, filename, value):
+        nf = self.flt.nf
+        v  = self.flt.vertex_llh[:,[1,0,2]]
+        e  = self.flt.element-1
+        all_data = []
+        
+        for i in range(nf):
+            all_data.append(f'>-Z{value[i]:.3f}')
+            all_data.append(f'{v[e[i,0],0]:10.3f} {v[e[i,0],1]:10.3f} {v[e[i,0],2]:10.3f}')
+            all_data.append(f'{v[e[i,1],0]:10.3f} {v[e[i,1],1]:10.3f} {v[e[i,1],2]:10.3f}')
+            all_data.append(f'{v[e[i,2],0]:10.3f} {v[e[i,2],1]:10.3f} {v[e[i,2],2]:10.3f}')
+        
+        header = f'# Rectangle fault slip model'
+        np.savetxt(filename, all_data, fmt='%s', header=header)
  
     def WriteSlipModel(self):
         '''
@@ -259,8 +196,6 @@ class Output(object):
         if self.flt.nf*3 < nslip:
             slip = slip[:,:-3]
         
-
-
         if self.flttype == 'rectangle':
             for i in range(nscount):
                 islip = slip[i].reshape((self.flt.nf, 3))
@@ -373,12 +308,12 @@ class Output(object):
         ds_slip     = zeros(nf)
         ss_sig_slip = zeros(nf)
         ds_sig_slip = zeros(nf)
-        patch = 0.5*(geom_grid[0:nsegs,4] + geom_grid[0:nsegs,5])
+        patch       = 0.5*(geom_grid[0:nsegs,4] + geom_grid[0:nsegs,5])
         for j in range(nf):
-	        ss_slip[j]  = self.sol.slip[3*j]
-	        ds_slip[j]  = self.sol.slip[3*j+1]
-	        ss_sig_slip = self.sol.sig_slip[3*j]
-	        ds_sig_slip = self.sol.sig_slip[3*j+1]
+            ss_slip[j]  = self.sol.slip[3*j]
+            ds_slip[j]  = self.sol.slip[3*j+1]
+            ss_sig_slip = self.sol.sig_slip[3*j]
+            ds_sig_slip = self.sol.sig_slip[3*j+1]
 	    
         patch = 0.5*(geom_grid[0:nsegs,4] + geom_grid[0:nsegs,5])
         ss_surface_slip = transpose(vstack((patch, ss_slip[0:nsegs], ss_sig_slip[0:nsegs])))
@@ -427,7 +362,7 @@ class Output(object):
             if self.data.ndim == 2:
                 mod  = dhat[0:nsta*2].reshape((nsta,2))
                 obs  = self.data.d_gps.reshape((nsta,2))
-                sig  = sqrt(diag(self.data.cov_gps)).reshape((nsta,2))
+                sig  = np.sqrt(diag(self.data.cov_gps)).reshape((nsta,2))
                 llh  = self.data.llh_gps[:,[1,0]]
                 if len(self.data.station_gps) == nsta:
                     # observed
@@ -468,7 +403,7 @@ class Output(object):
             if self.data.ndim == 3:
                 mod  = dhat[0:nsta*3].reshape((nsta,3))
                 obs  = self.data.d_gps.reshape((nsta,3))
-                sig  = sqrt(diag(self.data.cov_gps)).reshape((nsta,3))
+                sig  = np.sqrt(diag(self.data.cov_gps)).reshape((nsta,3))
                 llh  = self.data.llh_gps[:,[1,0]]
                 if len(self.data.station_gps) == nsta:
                     # observed
@@ -576,154 +511,7 @@ class Output(object):
         logging.info('Modeled and residual geodetic data are output.')
 
         return
-        
-    @staticmethod
-    def WriteGMTSlip_tri_element(vertex_llh, element, slip, fn_ss, fn_ds, fn_tt):
-	    '''
-	    write triangulation dislocation model into GMT format file
-	    Written by Zhao Bin, Institute of Seismology, CEA. May 12 2017
-	    IN:
-	        vertex_llh   : lon, lat, dep of element node
-	        element      : index of each element
-	        slip         : ss, ds and op slip of each element
-	        fn_ss        : file name for strike-slip
-	        fn_ds        : file name for dip-slip
-	        fn_tt        : file name for total-slip
-	    OUT:
-	        files
-	    '''
-	    
-	    fid_ss = open(fn_ss, 'w')
-	    fid_ds = open(fn_ds, 'w')
-	    fid_tt = open(fn_tt, 'w')
-	    
-	    slip = slip.squeeze()
-	    for i in range(len(element)):
-	        id1 = element[i,0]-1
-	        id2 = element[i,1]-1
-	        id3 = element[i,2]-1
-	        outline = np.array([vertex_llh[id1,:], vertex_llh[id2,:], vertex_llh[id3,:]])
-	
-	        fid_ss.write('> -Z%f\n' %(slip[3*i]))
-	        for j in range(len(outline)):
-	            fid_ss.write("%10.4f %10.4f %10.4f\n" %(outline[j,1], outline[j,0], outline[j,2]))
-	        fid_ds.write('> -Z%f\n' %(slip[3*i+1]))
-	        for j in range(len(outline)):
-	            fid_ds.write("%10.4f %10.4f %10.4f\n" %(outline[j,1], outline[j,0], outline[j,2]))
-	        total_slip = np.sqrt(slip[3*i]**2+slip[3*i+1]**2)
-	        fid_tt.write('> -Z%f\n' %(total_slip))
-	        for j in range(len(outline)):
-	            fid_tt.write("%10.4f %10.4f %10.4f\n" %(outline[j,1], outline[j,0], outline[j,2]))
-	    
-	    fid_ss.close()
-	    fid_ds.close()
-	    fid_tt.close()
-	    
-	    # print the status
-	    logging.info('Fault slip distribution in output in geophysical system.')
-	    
-	
-    @staticmethod
-    def WriteLocGMTslip(dis_geom_grid, slip):
-	    '''
-	    NEED DEBUGED
-	    '''        
-	
-	    # set fault parameters 
-	    wid    = dis_geom_grid[0,1]
-	    leng   = dis_geom_grid[0,0]
-	    dipr   = deg2rad(dis_geom_grid[0,3])
-	    east   = dis_geom_grid[:,5]
-	    north  = dis_geom_grid[:,6]
-	    up     = -1*dis_geom_grid[:,2]
-	
-	    # corners in local coordinates
-	    ll     = -0.5*leng
-	    lr     =  0.5*leng
-	
-	    ul     = complex(-0.5*leng, wid*cos(dipr))
-	    ur     = complex( 0.5*leng, wid*cos(dipr))
-	
-	    # z-component
-	    bottom = up
-	    top    = up + wid*sin(dipr)
-	    
-	
-	    strkr  = deg2rad((90-dis_geom_grid[:,4]))
-	
-	
-	    xvert  = []
-	    yvert  = []
-	    zvert  = []
-	    
-	    for i in range(len(dis_geom_grid)):
-	        ll  = complex(east[i],north[i])+ll*exp(complex(0,strkr[i]))
-	        lr = complex(east[i],north[i])+lr*exp(complex(0,strkr[i]))
-	        ul  = complex(east[i],north[i])+ul*exp(complex(0,strkr[i]))
-	        ur  = complex(east[i],north[i])+ur*exp(complex(0,strkr[i]))
-	        t  = np.array([lr.real, ur.real, ul.real, ll.real])
-	        xvert.append(t)
-	        t  = np.array([lr.imag, ur.imag, ul.imag, ll.imag])
-	        yvert.append(t)
-	        t  = np.array([bottom[i], top[i], top[i], bottom[i]])
-	        zvert.append(t)
-	        
-	
-	    fid_ss = open('ss_slip_xyz.gmtlin', 'w');
-	    fid_ds = open('ds_slip_xyz.gmtlin', 'w');
-	    fid_tt = open('tt_slip_xyz.gmtlin', 'w');
-	
-	    for i in range(len(dis_geom_grid)):
-	        fid_ss.write("> -Z%f\n" %(slip[3*i]))
-	        fid_ds.write("> -Z%f\n" %(slip[3*i+1]))
-	        total_slip = np.sqrt(slip[3*i]**2 + slip[3*i+1]**2)
-	        fid_tt.write("> -Z%f\n" %(total_slip))
-	        for j in range(4):
-	            fid_ss.write("%10.3f %10.3f %10.3f\n" %(xvert[i][j], yvert[i][j], zvert[i][j]))
-	            fid_ds.write("%10.3f %10.3f %10.3f\n" %(xvert[i][j], yvert[i][j], zvert[i][j]))
-	            fid_tt.write("%10.3f %10.3f %10.3f\n" %(xvert[i][j], yvert[i][j], zvert[i][j]))
-	
-	        
-    @staticmethod
-    def WriteModel_tri_element(element, slip):
-	    '''
-	    Output the fault model and slip as the FaultGeom format
-	    Written by Zhao Bin @ Institute of Seismology, CEA May 12 2017
-	    Input:
-	        elemet        - numpy array, shape(m,7)
-	        slip          - numpy array, shape(m,nf*3), m is number of smoothing, nf is umber of fault patches
-	    Output:
-	        FaultGeom_NNN - files in format of FaultGeom
-	    '''
-	
-	
-	    # get the size of slip array
-	    slip = mat(slip)
-	    [nscount, nslip] = slip.shape
-	    slip = array(slip)
-	
-	    # get the number of fault patches
-	    nelem = len(element)
-	       
-	    # init variables
-	    ss_slip = zeros(nelem)
-	    ds_slip = zeros(nelem)
-	    op_slip = zeros(nelem)
-	
-	    # for each smoothing factor
-	    for i in range(0, nscount):
-	        # for each fault
-	        for j in range(0, nelem):
-	            # strike slip, dip slip and open slip
-	            ss_slip[j] = slip[i, 3*j]
-	            ds_slip[j] = slip[i, 3*j+1]
-	            op_slip[j] = slip[i, 3*j+2]
-	        # constract output array
-	        patchFaultGeom = hstack((element[:,0:3], transpose(vstack((ss_slip, ds_slip, op_slip)))))
-	        fname = 'FaultGeom_%03d' %(i+1)
-	        # save the result into files
-	        np.savetxt(fname, patchFaultGeom[:, 0:10], fmt="%6i%6i%6i%10.3f%10.3f%10.3f")
-	
+            
     def archive_outfile(self):
         '''
         '''
@@ -747,7 +535,7 @@ class Output(object):
             os.popen('mv ruff_misfit '+dirname)
         # Solution
         if len(glob.glob('slipmodel*.tri'))>0:
-            os.popen('mv slipmodel_???.tri '+dirname)
+            os.popen('mv slipmodel*.tri '+dirname)
         if len(glob.glob('slipmodel*.faultgeom'))>0:
             os.popen('mv slipmodel*.faultgeom '+dirname)
         if len(glob.glob('*h5'))>0:

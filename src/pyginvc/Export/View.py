@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 # Written by Zhao Bin, when he is at UC Berkeley. Mar 4 2016
 
-from pyginvc.libs import geotools as gt
-import matplotlib.pyplot as plt
-import numpy as np
 import h5py, sys
+import numpy as np
+import matplotlib.pyplot as plt
+
+from pyginvc.libs import geotools as gt
+from pyginvc.Geometry.Fault import Fault
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 def plot_obs_mod(solutionfile, scale=100):
     '''
@@ -28,11 +31,11 @@ def plot_obs_mod(solutionfile, scale=100):
         # For GPS stations
         #
         if 'obs' not in h5.keys():
-            print(' No group named obs.')
+            print('No group named obs.')
             sys.exit()
         else:
             if 'llh_gps' not in h5['obs'].keys():
-                print(' No dataset named llh_gps.')
+                print('No dataset named llh_gps.')
                 sys.exit()
         llh_gps = h5['obs']['llh_gps'][()]
         origin  = h5['flt']['origin'][()]
@@ -40,7 +43,7 @@ def plot_obs_mod(solutionfile, scale=100):
         for i in range(len(llh_gps)):
             enu[i] = gt.llh2localxy(llh_gps[i], origin)
         if len(llh_gps) == 0:
-            print(' No GPS data')
+            print('No GPS data.')
             ndim  = 0
         else:
             ndim  = h5['obs']['ndim'][()]
@@ -118,12 +121,9 @@ def plot_slip_3d(solutionfile, elevation=40, azimuth=-81, coordtype='llh'):
 
     '''
 
-    from pyginvc.Geometry.Fault import Fault
-    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-
     with h5py.File(solutionfile, 'r') as h5:
         if 'flt' not in h5.keys():
-            print(' No fault information for plotting.')
+            print('No fault information for plotting.')
             sys.exit()
         else:
             fig      = plt.figure()
@@ -208,7 +208,7 @@ def plot_slip_3d(solutionfile, elevation=40, azimuth=-81, coordtype='llh'):
                     plt.ylabel('Latitude')
                     ax.set_zlabel('Depth (km)')
             
-                elif coordtype == 'neu' or coordtype == 'enu':
+                elif coordtype in {'neu', 'enu', 'NEU', 'ENU'}:
                     vertex_enu = h5['flt/vertex_enu'][()]
                     idx = element[:,0]
                     s   = ax.scatter(vertex_enu[idx,1], 
