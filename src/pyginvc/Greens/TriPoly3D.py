@@ -97,8 +97,10 @@ class TriPoly3D(BaseGreen):
         
         self.G     = G
         self.G_sar = G_sar
-        self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim)
-        self.G_sar_ramp = self.MakeGSARRamp(xy_sar, ndim)   
+        if 'gps_ramp' in dict_green.keys():
+            self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim)
+        if 'sar_ramp' in dict_greens.keys():
+            self.G_sar_ramp = self.MakeGSARRamp(xy_sar, ndim)
         self.modulus=mu
 
     def MakeGGPS(self, node, element, xy, mu, nu, ss, ds, op, gdim):

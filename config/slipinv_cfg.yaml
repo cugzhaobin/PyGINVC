@@ -53,6 +53,9 @@ dict_green:
     bcs        : [0,0,0,0]
     grnmethod  : 'okada'
     greenfile  : 'SAVE'
+    gps_ramp   : True
+    sar_ramp   : True
+    rake_beta  : 0
 
 ####################################################################################
 #                          Parameters For Smoothing                                #

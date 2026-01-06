@@ -35,6 +35,8 @@ class BaseGreen(object):
             beta = dict_green['rake_beta']
             self.RotateGreens(beta)
 
+        self.G_gps_ramp = None
+        self.G_sar_ramp = None
         self.rake_beta = beta
         self.modulus   = float(dict_green['modulus'])
         return

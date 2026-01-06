@@ -28,7 +28,6 @@ class Okada(BaseGreen):
             data       = an instance of class GeoData
             dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
         '''
-        
         super(Okada, self).__init__(flt, data, dict_green)
         return
 
@@ -107,8 +106,10 @@ class Okada(BaseGreen):
         
         self.G     = G
         self.G_sar = G_sar
-        self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim)
-        self.G_sar_ramp = self.MakeGSARRamp(xy_sar, ndim)
+        if 'gps_ramp' in dict_green.keys():
+            self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim)
+        if 'sar_ramp' in dict_greens.keys():
+            self.G_sar_ramp = self.MakeGSARRamp(xy_sar, ndim)
 
         # print the status
         if verbose:
