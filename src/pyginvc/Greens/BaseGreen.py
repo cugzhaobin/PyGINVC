@@ -2,6 +2,7 @@
 # Written by Zhao Bin, Aug. 26, 2020.
 import numpy as np
 import logging, os, h5py
+import pyginvc.libs.geotools as gt
 
 logging.basicConfig(
                     level=logging.INFO,
@@ -117,7 +118,7 @@ class BaseGreen(object):
             G[i,2] = xy[i,1]
             
     def MakeGGPSRamp(self, xy, dim):
-        G = np.ones((3*len(xy), 3))
+        G = np.ones((dim*len(xy), 3))
         for i in range(len(xy)):
             if dim == 2:
                 G[2*i+0] = np.array([1, 0, -xy[i,0]])
@@ -126,3 +127,10 @@ class BaseGreen(object):
                 G[3*i+0] = np.array([1, 0, -xy[i,0]])
                 G[3*i+1] = np.array([0, 1,  xy[i,1]])
         return G
+    
+    def _convert_to_local(self, llh, origin):
+        xy = np.zeros((len(llh),2))
+        for i in range(len(llh)):
+            xy[i,:] = gt.llh2localxy(llh[i], origin)
+        return xy
+        

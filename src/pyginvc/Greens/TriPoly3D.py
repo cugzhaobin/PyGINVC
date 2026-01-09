@@ -2,8 +2,8 @@
 # Written by Zhao Bin, Aug. 26, 2020
 import os, logging
 import numpy as np
+from scipy import linalg
 from pyginvc.Greens import poly3d
-from numpy import sin, cos, deg2rad
 from pyginvc.Greens.BaseGreen import BaseGreen
 import pyginvc.libs.geotools as gt
 
@@ -30,7 +30,7 @@ class TriPoly3D(BaseGreen):
         return
 
  
-    def GenGreens(self, flt, data, green_dict):
+    def GenGreens(self, flt, data, dict_green):
         '''
         Input:
             flt        = an instance of class Fault
@@ -48,59 +48,50 @@ class TriPoly3D(BaseGreen):
         node          = flt.vertex_enu
         element       = flt.element
         
-        greentype     = green_dict['greentype']
-        nu            = green_dict['nu']
-        mu            = float(green_dict['modulus'])
+        greentype     = dict_green['greentype']
+        nu            = dict_green['nu']
+        mu            = float(dict_green['modulus'])
         
-        ss            = greentype[0]
-        ds            = greentype[1]
-        op            = greentype[2]
+        ss, ds, op    = greentype
         
         # convert the LLH to local coordinate
-        xy_gps        = np.zeros((len(llh_gps),2))
-        xy_lev        = np.zeros((len(llh_lev),2))
-        xy_sar        = np.zeros((len(llh_sar),2))
-        if len(llh_gps) > 0:
-            for i in range(len(llh_gps)):
-                xy_gps[i,:] = gt.llh2localxy(llh_gps[i], origin)
-            
-        if len(llh_lev) > 0:
-            for i in range(len(llh_lev)):
-                xy_lev[i,:] = gt.llh2localxy(llh_lev[i], origin)
-            
-        if len(llh_sar) > 0:
-            for i in range(len(llh_sar)):
-                xy_sar[i,:] = gt.llh2localxy(llh_sar[i], origin)
+        xy_gps        = self._convert_to_local(llh_gps, origin)
+        xy_sar        = self._convert_to_local(llh_sar, origin)
+        xy_lev        = self._convert_to_local(llh_lev, origin)
         
         # if we have GPS data
-        G_dis = np.array([])
         if len(xy_gps) > 0 and len(element)>0:
             logging.info('Begin to compute Greens function for GPS station.')
             G_dis = self.MakeGGPS(node, element, xy_gps, mu, nu, ss, ds, op, ndim)
-    
+            self.G = G_dis
+            
             # print the status
             logging.info('Green function for %d GPS stations are computed.' %(len(xy_gps)))
-        G = G_dis
+            
                     
-        
         # if we have SAR data
         G_sar   = np.array([])
         if len(xy_sar) > 0:
             logging.info('Begin to compute Greens function for InSAR pixels.')
             G_sar = self.MakeGSAR(unit, node, element, xy_sar, nu, ss, ds, op)
-    
+            self.G_sar = G_sar
+            
             # print the status
             logging.info('Green function for %d InSAR points are computed.' %(len(xy_sar)))
         
         # print the status
         logging.info('Green function for geodetic data are computed using triangular dislocation model.')
         
-        self.G     = G
-        self.G_sar = G_sar
-        if 'gps_ramp' in dict_green.keys():
+        if 'gps_ramp' in dict_green.keys() and dict_green['gps_ramp']:
             self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim)
-        if 'sar_ramp' in dict_greens.keys():
-            self.G_sar_ramp = self.MakeGSARRamp(xy_sar, ndim)
+        if 'sar_ramp' in dict_green.keys() and dict_green['sar_ramp']:
+            sizes = data.n_sar
+            G_sar_ramp = []
+            for i in range(sizes):
+                start = sum(sizes[:i])
+                end   = sum(sizes[:i+1])
+                G_sar_ramp.append(self.MakeGSARRamp(xy_sar[start:end]))
+            self.G_sar_ramp = linalg.block_diag(*G_sar_ramp)
         self.modulus=mu
 
     def MakeGGPS(self, node, element, xy, mu, nu, ss, ds, op, gdim):

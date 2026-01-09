@@ -4,7 +4,8 @@
 
 import logging
 import numpy as np
-from numpy import cos, sin, deg2rad, hstack
+from scipy import linalg
+from numpy import cos, sin, deg2rad
 from pyginvc.libs import geotools as gt
 from pyginvc.Greens import okada85 as okada
 from pyginvc.Greens.BaseGreen import BaseGreen
@@ -29,7 +30,6 @@ class Okada(BaseGreen):
             dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
         '''
         super(Okada, self).__init__(flt, data, dict_green)
-        return
 
 
     def GenGreens(self, flt, data, dict_green):
@@ -55,11 +55,8 @@ class Okada(BaseGreen):
         
         greentype     = dict_green['greentype']
         nu            = dict_green['nu']
-        if 'verbose' not in dict_green.keys():
-            verbose   = True
-        else:
-            verbose   = dict_green['verbose']
-    
+        verbose       = dict_green.get('verbose', True)
+        
         # convert the LLH to local coordinate
         xy_gps        = np.zeros((len(llh_gps),2))
         xy_lev        = np.zeros((len(llh_lev),2))
@@ -106,16 +103,21 @@ class Okada(BaseGreen):
         
         self.G     = G
         self.G_sar = G_sar
-        if 'gps_ramp' in dict_green.keys():
+        
+        if 'gps_ramp' in dict_green.keys() and dict_green['gps_ramp']:
             self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim)
-        if 'sar_ramp' in dict_greens.keys():
-            self.G_sar_ramp = self.MakeGSARRamp(xy_sar, ndim)
+        if 'sar_ramp' in dict_green.keys() and dict_green['sar_ramp']:
+            sizes = data.n_sar
+            G_sar_ramp = []
+            for i in range(sizes):
+                start = sum(sizes[:i])
+                end   = sum(sizes[:i+1])
+                G_sar_ramp.append(self.MakeGSARRamp(xy_sar[start:end]))
+            self.G_sar_ramp = linalg.block_diag(*G_sar_ramp)
 
         # print the status
         if verbose:
             logging.info('Green function for geodetic data are computed using Okada model.')
-        
-        return
         
     def MakeGGPS(self, dis_geom, xy, nu, ss, ds, op, gdim):
         '''
@@ -135,8 +137,10 @@ class Okada(BaseGreen):
             G         = Green's Function for GPS
      
         '''
-        if dis_geom.ndim == 1: dis_geom = dis_geom.reshape(len(dis_geom),10)
-        if xy.ndim == 1: xy = xy.reshape(len(xy),2)
+        if dis_geom.ndim == 1: 
+            dis_geom = dis_geom.reshape(-1,10)
+        if xy.ndim == 1: 
+            xy = xy.reshape(-1,2)
         nf   = dis_geom.shape[0]
         nsta = xy.shape[0]
     
@@ -206,7 +210,6 @@ class Okada(BaseGreen):
         
         '''
     
-    
         # 
         if dis_geom.ndim == 1: 
             dis_geom = dis_geom.reshape(len(dis_geom),10)
@@ -224,7 +227,7 @@ class Okada(BaseGreen):
                                   sin(deg2rad(track))*sin(deg2rad(lookangle)), 
                                  -cos(deg2rad(lookangle))])
             unit      = -1.0*unit
-        G = np.zeros((ndata, 3*nf+3))
+        G = np.zeros((ndata, 3*nf))
     
         # for each subfaults
         for i in range(nf):   
@@ -233,21 +236,21 @@ class Okada(BaseGreen):
             range_3 = np.zeros((ndata,1))
             # SS motion.
             if ss != 0:
-                u        = self.disloc(nu, hstack((dis_geom[i,0:7],[1,0,0])), xy)
+                u        = self.disloc(nu, np.hstack((dis_geom[i,0:7],[1,0,0])), xy)
                 for j in range(ndata):
                     range_1[j,:] = unit[j,:].dot(u[j,:])
                 G[:,3*i] = range_1.T
     
     	    # DS motion.
             if ds != 0: 
-                u          = self.disloc(nu, hstack((dis_geom[i,0:7],[0,1,0])), xy)
+                u          = self.disloc(nu, np.hstack((dis_geom[i,0:7],[0,1,0])), xy)
                 for j in range(ndata):
                     range_2[j,:] = unit[j,:].dot(u[j,:])
                 G[:,3*i+1] = range_2.T
     
     	    # Opening
             if op != 0: 
-                u          = self.disloc(nu, hstack((dis_geom[i,0:7],[0,0,1])), xy)
+                u          = self.disloc(nu, np.hstack((dis_geom[i,0:7],[0,0,1])), xy)
                 for j in range(ndata):
                     range_3[j,:] = unit[j,:].dot(u[j,:])
                 G[:,3*i+2] = range_3.T

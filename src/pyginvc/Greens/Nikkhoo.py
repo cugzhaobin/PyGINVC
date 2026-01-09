@@ -5,7 +5,7 @@
 
 import logging
 import numpy as np
-from numpy import sin, cos, deg2rad
+from scipy import linalg
 from pyginvc.libs import geotools as gt
 from pyginvc.Greens.tdcalc import TDdispHS
 from pyginvc.Greens.BaseGreen import BaseGreen
@@ -29,28 +29,9 @@ class Nikkhoo(BaseGreen):
             dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
         '''
         super(Nikkhoo, self).__init__(flt, data, dict_green)
-#       import h5py, os
-        
-#       greenfile = dict_green['greenfile']   
-#       if greenfile == "":
-#           self.GenGreens(flt, data, dict_green)
-#       elif greenfile == "SAVE":
-#           self.GenGreens(flt, data, dict_green)
-#           with h5py.File('greenfunc.h5', 'w') as h5:
-#               h5.create_dataset('G', data = self.G, compression='gzip')
-#               h5.create_dataset('G_sar', data = self.G_sar, compression='gzip')
-#       elif os.path.isfile(greenfile):
-#           with h5py.File(greenfile, 'r') as h5:
-#               self.G     = h5['G'].value[()]
-#               self.G_sar = h5['G_sar'].value[()]
-#               logging.info('Load Greens function from {}'.format(greenfile))
-#       else:
-#           self.GenGreens(flt, data, dict_green)
-#       self.modulus = float(dict_green['modulus'])
-#       return
 
 
-    def GenGreens(self, flt, data, green_dict):
+    def GenGreens(self, flt, data, dict_green):
         '''
         Input:
             flt        = an instance of class Fault
@@ -68,9 +49,9 @@ class Nikkhoo(BaseGreen):
         node          = flt.vertex_enu
         element       = flt.element
         
-        greentype     = green_dict['greentype']
-        nu            = green_dict['nu']
-        mu            = float(green_dict['modulus'])
+        greentype     = dict_green['greentype']
+        nu            = dict_green['nu']
+        mu            = float(dict_green['modulus'])
         
         ss            = greentype[0]
         ds            = greentype[1]
@@ -125,9 +106,14 @@ class Nikkhoo(BaseGreen):
         self.G_sar = G_sar
         if 'gps_ramp' in dict_green.keys():
             self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim)
-        if 'sar_ramp' in dict_greens.keys():
-            self.G_sar_ramp = self.MakeGSARRamp(xy_sar, ndim)
- 
+        if 'sar_ramp' in dict_green.keys():
+            sizes = data.n_sar
+            G_sar_ramp = []
+            for i in range(sizes):
+                start = sum(sizes[:i])
+                end   = sum(sizes[:i+1])
+                G_sar_ramp.append(self.MakeGSARRamp(xy_sar[start:end]))
+            self.G_sar_ramp = linalg.block_diag(*G_sar_ramp)
 
     def MakeGGPS_Tridisloc(self, node, element, xy, mu, nu, ss, ds, op, gdim):
         '''
@@ -231,10 +217,12 @@ class Nikkhoo(BaseGreen):
         # Descending track unit vector
         if len(unit) == 0:
             lookangle = 23.0
-            track = 13.9
-            unit  = np.array([-cos(deg2rad(track))*sin(deg2rad(lookangle)),
-                               sin(deg2rad(track))*sin(deg2rad(lookangle)),
-                               -cos(deg2rad(lookangle))])
+            track     = 13.9
+            rad_lookangle = np.deg2rad(lookangle)
+            rad_track     = np.deg2rad(track)
+            unit  = np.array([-np.cos(rad_track)*np.sin(rad_lookangle),
+                               np.sin(rad_track)*np.sin(rad_lookangle),
+                              -np.cos(rad_lookangle)])
             unit  = -1.0*unit
             
         # init Green function G
