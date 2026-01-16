@@ -2,6 +2,7 @@
 # Written by Zhao Bin, when he is at UC Berkeley. Feb 14 2016
 # Mod by Zhao Bin, Dec. 7, 2018. replace print() with print
 
+import h5py
 import numpy as np
 import sys, os, logging
 from pyginvc.libs import geotools as gt
@@ -86,28 +87,23 @@ class Triangle(object):
         '''
         Calaulate moment
         '''
-        Mo      = np.zeros(self.nf)
         vertex  = self.vertex_enu
         element = self.element
-        slip    = self.slip
+        idx1    = element[:,0]-1
+        idx2    = element[:,1]-1
+        idx3    = element[:,2]-1
+        v1      = vertex[idx1]
+        v2      = vertex[idx2]
+        v3      = vertex[idx3]
 
-        for i in range(self.nf):
-            id1 = element[i,0]-1
-            id2 = element[i,1]-1
-            id3 = element[i,2]-1
-
-            len1 = np.sqrt((vertex[id1,0]-vertex[id2,0])**2 +
-                           (vertex[id1,1]-vertex[id2,1])**2 +
-                           (vertex[id1,2]-vertex[id2,2])**2)
-            len2 = np.sqrt((vertex[id1,0]-vertex[id3,0])**2 +
-                           (vertex[id1,1]-vertex[id3,1])**2 +
-                           (vertex[id1,2]-vertex[id3,2])**2)
-            len3 = np.sqrt((vertex[id3,0]-vertex[id2,0])**2 +
-                           (vertex[id3,1]-vertex[id2,1])**2 +
-                           (vertex[id3,2]-vertex[id2,2])**2)
-            s     = 0.5*(len1+len2+len3)
-            area  = np.sqrt(s*(s-len1)*(s-len2)*(s-len3))
-            Mo[i] = 1e6 * area * np.abs(np.sqrt(slip[3*i]**2 + slip[3*i+1]**2)) * shearmodulus
+        vec1    = v2 - v1
+        vec2    = v3 - v1
+        cross   = np.cross(vec1, vec2)
+        area    = 0.5 * np.linalg.norm(cross, axis=1)
+        ss      = self.slip[:,0]
+        ds      = self.slip[:,1]
+        tslip   = np.sqrt(ss**2 + ds**2)
+        Mo      = 1e6 * area * tslip * shearmodulus
         Mo_total  = np.sum(Mo)/1000.0
         Mw_total  = 2.0/3.0*np.log10(Mo_total) - 6.067
         return Mo_total, Mw_total
@@ -159,7 +155,7 @@ class Triangle(object):
 
 
     def DumpFault(self):
-        import h5py
+
         with h5py.File('fault.h5', 'w') as h5:
             h5['vertex_enu'] = self.vertex_enu
             h5['vertex_llh'] = self.vertex_llh

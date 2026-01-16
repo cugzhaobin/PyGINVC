@@ -197,10 +197,12 @@ class TriPoly3D(BaseGreen):
         # Descending track unit vector
         if len(unit) == 0:
             lookangle = 23.0
-            track = 13.9
-            unit  = np.array([-cos(deg2rad(track))*sin(deg2rad(lookangle)),
-                               sin(deg2rad(track))*sin(deg2rad(lookangle)),
-                               -cos(deg2rad(lookangle))])
+            track     = 13.9
+            rad_lookangle = np.deg2rad(lookangle)
+            rad_track     = np.deg2rad(track)
+            unit  = np.array([-np.cos(rad_track)*np.sin(rad_lookangle),
+                              np.sin(rad_track)*np.sin(rad_lookangle),
+                              -np.cos(rad_lookangle)])
             unit  = -1.0*unit
             
         # init Green function G

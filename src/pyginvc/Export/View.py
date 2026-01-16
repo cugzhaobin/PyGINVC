@@ -100,7 +100,7 @@ def plot_obs_mod(solutionfile, scale=100):
                 plt.show()
 
 
-def plot_slip_3d(solutionfile, elevation=40, azimuth=-81, coordtype='llh'):
+def plot_slip_3d(solutionfile, elevation=40, azimuth=-81, coordtype='llh', show=True):
     '''
     Plot 3D finite slip distribution.
 
@@ -130,7 +130,6 @@ def plot_slip_3d(solutionfile, elevation=40, azimuth=-81, coordtype='llh'):
             ax       = fig.add_subplot(111, projection='3d')
             ax.view_init(elev=elevation, azim=azimuth)
             
-            show = True
             if h5['flt/flttype'][()] == 'rectangle':
                 geom     = h5['flt/geom'][()]
                 dis_geom = h5['flt/dis_geom'][()]

@@ -4,6 +4,7 @@
 import h5py, os
 import numpy as np
 import subprocess, logging
+from pyginvc.libs import geotools as gt
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -55,8 +56,6 @@ class EDCMP(object):
             self.G     = Green's function for GPS
             self.G_sar = Green's function for InSAR
         '''
-        import numpy as np
-        from pyginvc.libs import geotools as gt
 
         llh_gps       = data.llh_gps
         llh_lev       = data.llh_lev
@@ -111,9 +110,9 @@ class EDCMP(object):
         
         self.G     = G
         self.G_sar = G_sar
-        if 'gps_ramp' in dict_green.keys():
+        if 'gps_ramp' in dict_green.keys() and dict_green['gps_ramp']:
             self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim)
-        if 'sar_ramp' in dict_greens.keys():
+        if 'sar_ramp' in dict_green.keys() and dict_green['sar_ramp']:
             self.G_sar_ramp = self.MakeGSARRamp(xy_sar, ndim)
         
         # print the status
@@ -231,10 +230,6 @@ class EDCMP(object):
             G            -  numpy array, desigin matrix
         
         '''
-    
-        import numpy as np
-        from numpy import cos, sin, deg2rad, hstack
-    
         # 
         ss = greentype[0]
         ds = greentype[1]
@@ -242,7 +237,7 @@ class EDCMP(object):
         if edcmp_flt.ndim == 1:
             edcmp_flt = edcmp_flt.reshape(len(edcmp_flt),10)
         if xy.ndim == 1:
-            xy = xy.reshape(len(xy),2)
+            xy = xy.reshape(-1,2)
 
         nf     = edcmp_flt.shape[0]
         ndata  = xy.shape[0]
@@ -251,10 +246,12 @@ class EDCMP(object):
         if len(unit) == 0:
             lookangle = 23
             track     = 13.9
-            unit      = np.array([-cos(deg2rad(track))*sin(deg2rad(lookangle)), 
-                                  sin(deg2rad(track))*sin(deg2rad(lookangle)), 
-                                 -cos(deg2rad(lookangle))])
-            unit      = -1.0*unit
+            rad_lookangle = np.deg2rad(lookangle)
+            rad_track     = np.deg2rad(track)
+            unit  = np.array([-np.cos(rad_track)*np.sin(rad_lookangle),
+                               np.sin(rad_track)*np.sin(rad_lookangle),
+                              -np.cos(rad_lookangle)])
+            unit  = -1.0*unit
         G = np.zeros((ndata, 3*nf+3))
     
         # for each subfaults
@@ -263,7 +260,7 @@ class EDCMP(object):
             if ss != 0:
                 edcmp_flt[i,1] = 1.0
                 edcmp_flt[i,9] = 0
-                gen_edcmp_inp(edcmp_flt[i], xy[:,1], xy[:,0], np.zeros(len(xy)), edgrndir, ss, ds, cl)
+                gen_edcmp_inp(edcmp_flt[i], xy[:,1], xy[:,0], np.zeros(len(xy)), edgrndir, ss, ds, op)
                 subprocess.call("echo tmp.inp | edcmp", shell=True)
                 dat = np.genfromtxt('tmp.disp', use_cols=[2,3,4])
                 dat[:,2] = -dat[:,2]
@@ -273,7 +270,7 @@ class EDCMP(object):
             if ds != 0: 
                 edcmp_flt[i,1] = 1.0
                 edcmp_flt[i,9] = 90
-                gen_edcmp_inp(edcmp_flt[i], xy[:,1], xy[:,0], np.zeros(len(xy)), edgrndir, ss, ds, cl)
+                gen_edcmp_inp(edcmp_flt[i], xy[:,1], xy[:,0], np.zeros(len(xy)), edgrndir, ss, ds, op)
                 subprocess.call("echo tmp.inp | edcmp", shell=True)
                 dat = np.genfromtxt('tmp.disp', use_cols=[2,3,4])
                 dat[:,2] = -dat[:,2]
@@ -283,17 +280,12 @@ class EDCMP(object):
             if op != 0: 
                 edcmp_flt[i,1] = 0.0
                 edcmp_flt[i,9] = 0
-                gen_edcmp_inp(edcmp_flt[i], xy[:,1], xy[:,0], np.zeros(len(xy)), edgrndir, ss, ds, cl)
+                gen_edcmp_inp(edcmp_flt[i], xy[:,1], xy[:,0], np.zeros(len(xy)), edgrndir, ss, ds, op)
                 subprocess.call("echo tmp.inp | edcmp", shell=True)
                 dat = np.genfromtxt('tmp.disp', use_cols=[2,3,4])
                 dat[:,2] = -dat[:,2]
                 G[:,3*i] = unit.dot(dat).T
-    
-        # The following is for adding a constant and slope to the SAR data
-#       for j in range(ndata):
-#           G[j,3*nf+0] = 1.0
-#           G[j,3*nf+1] = xy[i,0]
-#           G[j,3*nf+2] = xy[i,1]
+
      
         return G
 

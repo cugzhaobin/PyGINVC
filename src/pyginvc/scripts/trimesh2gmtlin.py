@@ -2,7 +2,6 @@
 # This script depends on PyUnicycle.Geometry
 from pyginvc.Geometry.Triangle import Triangle
 import argparse
-import numpy as np
 
 def main():
     parser = argparse.ArgumentParser(description="Convert vertex/element file to gmtlin")
@@ -16,11 +15,6 @@ def main():
     coordtype   = args.coordtype
 
     tri = Triangle(vertexfile, elementfile)
-
-    if coordtype == 'neu':
-        x  = tri.vertex_enu
-    if coordtype == 'llh':
-        x  = tri.vertex_llh
     v  = tri.element-1
 
     with open('ds_slip.gmtlin', 'w') as fid:

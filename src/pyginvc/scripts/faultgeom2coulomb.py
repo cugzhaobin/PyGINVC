@@ -4,7 +4,7 @@
 # Rewritten by Zhao Bin, April 6, 2021
 
 from pyginvc.Geometry.Fault import Fault
-import sys, argparse
+import argparse
 
 def main(args):
     parser = argparse.ArgumentParser(description="Convert FaultGeom file to Coulomb input file.")

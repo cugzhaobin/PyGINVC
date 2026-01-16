@@ -254,13 +254,7 @@ class Okada(BaseGreen):
                 for j in range(ndata):
                     range_3[j,:] = unit[j,:].dot(u[j,:])
                 G[:,3*i+2] = range_3.T
-    
-        # The following is for adding a constant and slope to the SAR data
-#       for j in range(ndata):
-#           G[j,3*nf+0] = 1.0
-#           G[j,3*nf+1] = xy[i,0]
-#           G[j,3*nf+2] = xy[i,1]
-     
+ 
         return G
 
     @staticmethod

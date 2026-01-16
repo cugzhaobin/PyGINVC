@@ -98,12 +98,13 @@ def main():
     args = parser.parse_args()
 
     faultfile = args.faultfile
+    """
     afsfile   = args.aftershock
     coordtype = args.coordtype
     showtext  = args.showindex
     azim      = args.azimuth
     elev      = args.elevation
-    """
+
     # Load fault data
     felem = load_fault_data(faultfile)
     slip  = felem[:, 7] / felem[:, 7].max()

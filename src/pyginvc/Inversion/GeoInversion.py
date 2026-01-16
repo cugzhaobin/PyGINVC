@@ -116,7 +116,7 @@ class GeoInversion(object):
         dip_sig_slip   = zeros((nsmooth, nf))
         openning       = zeros((nsmooth, nf))
         op_sig_slip    = zeros((nsmooth, nf))
-        G2I            = zeros((len(D)+nf, nf))
+        #G2I            = zeros((len(D)+nf, nf))
         sar_switch     = 0
         
         if len(d_sar) > 0:

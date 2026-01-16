@@ -9,12 +9,11 @@
 
 
 import matplotlib
-from matplotlib import animation
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from pyginvc.Geometry.Fault import Fault
 import numpy as np
-import sys, os, argparse
+import os, argparse
 
 
 cdict = {'red': ((0., 1, 1),

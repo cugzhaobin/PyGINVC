@@ -608,9 +608,6 @@ def gen_faultgeom(infile, outfile, origin):
         v2    = vertex[patch[1]]
         v3    = vertex[patch[2]]
         v4    = vertex[patch[3]]
-        length1 = np.sqrt((v1[0] - v2[0])**2 + (v1[1] - v2[1])**2)
-        length2 = np.sqrt((v3[0] - v4[0])**2 + (v3[1] - v4[1])**2)
-        length  = (length1+length2)/2
         width1  = np.sqrt((v1[0]-v4[0])**2 + (v1[1]-v4[1])**2 + (v1[2]-v4[2])**2)
         width2  = np.sqrt((v2[0]-v3[0])**2 + (v2[1]-v3[1])**2 + (v2[2]-v3[2])**2)
         width   = (width1+width2)/2

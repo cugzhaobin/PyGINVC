@@ -15,7 +15,7 @@ def main():
     origin  = args.origin
     scale   = args.scale
     flt     = Fault(fltfile, 1, 1, False, origin=origin)
-    flt.FaultGeom2VTK(scale=1)
+    flt.FaultGeom2VTK(scale=scale)
 
 if __name__ == '__main__':
     main()

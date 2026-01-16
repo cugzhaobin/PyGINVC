@@ -15,7 +15,7 @@ def main():
     origin  = args.origin
     scale   = args.scale
     flt     = Fault(fltfile, 1, 1, False, origin=origin)
-    flt.faultgeom2geojson(scale=1)
+    flt.faultgeom2geojson(scale=scale)
 
 if __name__ == '__main__':
     main()

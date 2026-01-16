@@ -4,8 +4,8 @@
 import logging, h5py
 import os, time, glob
 import numpy as np
-from numpy import column_stack, array, hstack, vstack, transpose
-from numpy import deg2rad, sin, cos, exp, zeros, diag
+from numpy import column_stack, hstack, vstack, transpose
+from numpy import diag
 from pyginvc.Geometry.Fault import Fault
 from pyginvc.Geometry.Triangle import Triangle
 from pyginvc.Forward.TriForward import TriForward
@@ -160,7 +160,7 @@ class Output(object):
             all_data.append(f'{br[0]:10.3f} {br[1]:10.3f} {br[2]:10.3f}')
             all_data.append(f'{bl[0]:10.3f} {bl[1]:10.3f} {bl[2]:10.3f}')
         
-        header = f'# Rectangle fault slip model'
+        header = '# Rectangle fault slip model'
         np.savetxt(filename, all_data, fmt='%s', header=header)
     
     def write_triangle_slip(self, filename, value):
@@ -175,7 +175,7 @@ class Output(object):
             all_data.append(f'{v[e[i,1],0]:10.3f} {v[e[i,1],1]:10.3f} {v[e[i,1],2]:10.3f}')
             all_data.append(f'{v[e[i,2],0]:10.3f} {v[e[i,2],1]:10.3f} {v[e[i,2],2]:10.3f}')
         
-        header = f'# Rectangle fault slip model'
+        header = '# Rectangle fault slip model'
         np.savetxt(filename, all_data, fmt='%s', header=header)
  
     def WriteSlipModel(self):
@@ -304,10 +304,10 @@ class Output(object):
         geom_grid   = self.flt.geom_grid
         nsegs       = self.flt.nsegs
         nf          = self.flt.nf
-        ss_slip     = zeros(nf)
-        ds_slip     = zeros(nf)
-        ss_sig_slip = zeros(nf)
-        ds_sig_slip = zeros(nf)
+        ss_slip     = np.zeros(nf)
+        ds_slip     = np.zeros(nf)
+        ss_sig_slip = np.zeros(nf)
+        ds_sig_slip = np.zeros(nf)
         patch       = 0.5*(geom_grid[0:nsegs,4] + geom_grid[0:nsegs,5])
         for j in range(nf):
             ss_slip[j]  = self.sol.slip[3*j]
@@ -362,7 +362,7 @@ class Output(object):
             if self.data.ndim == 2:
                 mod  = dhat[0:nsta*2].reshape((nsta,2))
                 obs  = self.data.d_gps.reshape((nsta,2))
-                sig  = np.sqrt(diag(self.data.cov_gps)).reshape((nsta,2))
+                sig  = np.sqrt(np.diag(self.data.cov_gps)).reshape((nsta,2))
                 llh  = self.data.llh_gps[:,[1,0]]
                 if len(self.data.station_gps) == nsta:
                     # observed
@@ -388,12 +388,12 @@ class Output(object):
                 else:
                     # observed
                     fmt  = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f"
-                    null = zeros((nsta,1))
+                    null = np.zeros((nsta,1))
                     outmatrix = hstack((llh, obs, sig, null))
                     np.savetxt("gps_obs.gmtvec", outmatrix, fmt=fmt)
 
                     # modeled
-                    null = zeros((nsta,3))
+                    null = np.zeros((nsta,3))
                     outmatrix = hstack((llh, mod, null))
                     np.savetxt("gps_mod.gmtvec", outmatrix, fmt=fmt)
 
@@ -450,25 +450,25 @@ class Output(object):
                     # observed
                     fmt = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f"
                     fmt3 = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f"
-                    outmatrix = hstack((llh, obs[:,0:2], sig[:,0:2], zeros((nsta,1))))
+                    outmatrix = np.column_stack((llh, obs[:,0:2], sig[:,0:2], np.zeros(nsta)))
                     np.savetxt("gps_obs.gmtvec", outmatrix, fmt=fmt)
-                    outmatrix = vstack((llh.T, zeros(nsta), obs[:,2], sig[:,2], zeros((2,nsta)))).T
+                    outmatrix = np.column_stack((llh, np.zeros(nsta), obs[:,2], sig[:,2], np.zeros(nsta,2)))
                     np.savetxt("gps_obs_up.gmtvec", outmatrix, fmt=fmt)
 
                     # modeled
-                    null = zeros((nsta,3))
-                    outmatrix = hstack((llh, mod[:,0:2], null))
+                    null = np.zeros((nsta,3))
+                    outmatrix = np.column_stack((llh, mod[:,0:2], null))
                     np.savetxt("gps_mod.gmtvec", outmatrix, fmt=fmt)
-                    outmatrix = vstack((llh.T, null[:,0], mod[:,2], null.T)).T
+                    outmatrix = np.column_stack((llh, null[:,0], mod[:,2], null))
                     np.savetxt("gps_mod_up.gmtvec", outmatrix, fmt=fmt)
-                    outmatrix = hstack((llh, mod, null))
+                    outmatrix = np.column_stack((llh, mod, null))
                     np.savetxt("gps_mod_3d.gmtvec", outmatrix, fmt=fmt3)
 
 	                # residual
                     r_gps = obs - mod
-                    outmatrix = hstack((llh, r_gps[:,0:2], null))
+                    outmatrix = np.column_stack((llh, r_gps[:,0:2], null))
                     np.savetxt("gps_res.gmtvec", outmatrix, fmt=fmt)
-                    outmatrix = vstack((llh.T, null[:,0], r_gps[:,2], null.T)).T
+                    outmatrix = np.column_stack((llh, null[:,0], r_gps[:,2], null))
                     np.savetxt("gps_res_up.gmtvec", outmatrix, fmt=fmt)
 
 	        # print the status

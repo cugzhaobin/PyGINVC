@@ -74,7 +74,7 @@ class TriInversion(object):
         len_geod       = len(d_gps) + len(d_lev)
         len_all        = len_geod   + len(d_sar)
         nf             = len(self.flt.element)
-        d_lap          = zeros(3*nf)
+        d_lap          = np.zeros(3*nf)
         D              = hstack((d_gps, d_lev));
     
         # get d2I and d2R

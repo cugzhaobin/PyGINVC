@@ -71,7 +71,6 @@ def main():
     #   ax.text(np.mean(lon), np.mean(lat), np.mean(dep), str(i), color='black', fontsize=5)
 
     indx1 = element[:,0]-1
-    aa=vertex_llh[indx1,0]
     s   = ax.scatter(vertex_llh[indx1,1], vertex_llh[indx1,0], c=slip, cmap=plt.cm.jet, s=1e-5, lw=0)
     cb = plt.colorbar(s, shrink=0.8, pad=-0.07)
 

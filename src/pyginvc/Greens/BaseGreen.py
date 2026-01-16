@@ -40,7 +40,7 @@ class BaseGreen(object):
         self.G_sar_ramp = None
         self.rake_beta = beta
         self.modulus   = float(dict_green['modulus'])
-        return
+
 
     def LoadGreens(self, greenfile):
         '''
@@ -63,7 +63,7 @@ class BaseGreen(object):
             self.G     = dat['G']
             self.G_sar = dat['G_sar']
             logging.info('Load Greens function from {}'.format(greenfile))
-        return
+
 
     def SaveGreens(self, greenfile='green.h5'):
         '''
@@ -111,11 +111,20 @@ class BaseGreen(object):
             h5.create_dataset('G_sar', data=Gsarnew, compression='gzip')
         logging.info('Rotate Greens function finished.')
 
-    def MakeGSARRamp(self, xy, dim):
+    def MakeGSARRamp(self, xy):
+        '''
+        Rotation and translation InSAR Los data
+        Input:
+            xy: local coordinate of InSAR data, list
+        Output:
+            G: array
+
+        '''
         G = np.ones((len(xy),3))
         for i in range(len(xy)):
             G[i,1] = xy[i,0]
             G[i,2] = xy[i,1]
+        return G
             
     def MakeGGPSRamp(self, xy, dim):
         G = np.ones((dim*len(xy), 3))

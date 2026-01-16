@@ -6,7 +6,6 @@
 
 # import libs
 import argparse
-import pyginvc.libs.geotools as gt
 from pyginvc.libs import poly3d
 
 def main():
@@ -19,7 +18,6 @@ def main():
     # get the input parameter
     slipmodel         = args.faultfile
     origin            = args.origin
-    print(origin)
 
     # get uniqe vertex, elem index, disp_element and origin
     vertex, elem, disp = poly3d.vertex_element_from_faultgeom(slipmodel, origin)

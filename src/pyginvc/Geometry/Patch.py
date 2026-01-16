@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 import os, sys, logging
-from numpy import mat, math, dot 
 from numpy import zeros, ones, deg2rad, rad2deg, sin, cos, sqrt
 from pyginvc.libs import geotools as gt
 

@@ -148,27 +148,27 @@ class Fault(object):
         [nf, ncol] = geom.shape
             
         # initiate the ouput parameter dis_geom
-        dis_geom   = zeros((nf,10))
-       
-        # for each subfaults
+        xy_1end    = zeros((nf,2))
+        xy_2end    = zeros((nf,2))
+        
         for i in range(nf):
+            xy_1end[i]  = gt.llh2utm([geom[i,3], geom[i,4]], origin)
+            xy_2end[i]  = gt.llh2utm([geom[i,5], geom[i,6]], origin)
             
-            # convert latitude and longitude to XY with respect to origin
-            xy_1end  = gt.llh2utm([geom[i,3], geom[i,4]], origin)
-            xy_2end  = gt.llh2utm([geom[i,5], geom[i,6]], origin)
+        
+        leng     = sqrt(sum((xy_1end-xy_2end)**2, axis=1))
             
-            # Length of the fault
-            leng     = sqrt(sum((xy_1end-xy_2end)**2))
+        # strike angle of the fault
+        dx = xy_1end[:,0] - xy_2end[:,0]
+        dy = xy_1end[:,1] - xy_2end[:,1]
+        strik = rad2deg(math.atan2(dy, dx))
+        strik = 90-strik
             
-            # strike angle of the fault
-            strik = rad2deg(math.atan2((xy_2end[1]-xy_1end[1]), (xy_2end[0]-xy_1end[0])))
-            strik = 90-strik
+        # local coordinates with respect to origin
+        delE = 0.5*(xy_1end[:,0] + xy_2end[:,0])
+        delN = 0.5*(xy_1end[:,1] + xy_2end[:,1])
             
-            # local coordinates with respect to origin
-            delE = 0.5*(xy_1end[0] + xy_2end[0])
-            delN = 0.5*(xy_1end[1] + xy_2end[1])
-            
-            dis_geom[i,:] = np.array([leng, geom[i,0], geom[i,1], geom[i,2], strik, delE, delN, geom[i,7], geom[i,8], geom[i,9]])    
+        dis_geom = np.column_stack((leng, geom[:,0:3], strik, delE, delN, geom[:,7:10]))
         return dis_geom, origin
         
     @staticmethod
@@ -611,28 +611,29 @@ class Fault(object):
         '''
     
         edcmp_flt = np.zeros((self.nf, 10))
+        strik = self.strike % 360
+        dip   = self.dip % 180
+
+        # total slip, convert mm in FautlGeom to m in EDCMP
+        slip  = self.ts/1e3
+        
+        leng  = self.length*1e3
+        width = self.width*1e3
+        north = self.top_left_neu[:,0]*1e3
+        east  = self.top_left_neu[:,1]*1e3
+        dep   =-self.top_left_neu[:,2]*1e3
+    
+        indices = np.arange(1, self.nf+1)
+        
+        edcmp_flt = np.column_stack([indices, slip, north, east, 
+                                     dep, leng, width, strik, dip, self.rake])
     
         # open output file
         with open('edcmp.fault', 'w') as fid:
             fid.write("# origin: {:10.4f} {:10.4f} ".format(self.origin[0], self.origin[1]))
-            for i in range(self.nf):
-                strik = self.strike[i] % 360
-                dip   = self.dip[i] % 180
-      
-                # total slip, convert mm in FautlGeom to m in EDCMP
-                slip  = self.ts/1e3
-                
-                leng  = self.length[i]*1e3
-                width = self.width[i]*1e3
-                north = self.top_left_neu[i,0]*1e3
-                east  = self.top_left_neu[i,1]*1e3
-                dep   =-self.top_left_neu[i,2]*1e3
-            
-    
-                edcmp_flt[i,:] = np.array([i+1, slip[i], north, east, dep, leng, width, strik, dip, self.rake[i]])
-                fid.write("%4d %10.3f %10.3e %10.3e %10.3e %10.3e %10.3e %10.3f %10.3f %10.3f\n" 
-                    %(i+1, slip[i], north, east, dep, leng, width, strik, dip, self.rake[i]))
-
+          
+            fmt = "%4d %10.3f %10.3e %10.3e %10.3e %10.3e %10.3e %10.3f %10.3f %10.3f"
+            np.save(fid, edcmp_flt, fmt=fmt)
         return edcmp_flt
 
     def FaultGeom2VISCO1D(self):
@@ -771,7 +772,7 @@ class Fault(object):
                     -self.top_left_llh[i,2],
                      self.length[i],
                      self.width[i],
-                     stirk,
+                     strik,
                      dip,
                      np_st, np_di, start_time))
             print("     %10.3f %10.3f %10.3f %10.3f %10.3f" 
@@ -837,16 +838,10 @@ class Fault(object):
 
     def Moment(self, shearmodulus=3e10):
         '''
+        Calculate seismic moment
         '''
-
-        nf = len(self.dis_geom_grid)
-        Mo = np.zeros(nf)
-        
-        for i in range(0, nf):
-            Mo[i] = 1000*self.dis_geom_grid[i,0] * \
-                    1000*self.dis_geom_grid[i,1] * \
-                    self.ts[i] * shearmodulus
-        
+        area     = self.dis_geom_grid[:,0] * self.dis_geom_grid[:,1] * 1e6
+        Mo       = area * self.ts * shearmodulus
         Mo_total = np.sum(Mo)/1000
         Mw_total = 2.0/3.0*np.log10(Mo_total) - 6.067
 

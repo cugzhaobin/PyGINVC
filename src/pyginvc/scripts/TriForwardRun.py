@@ -64,6 +64,7 @@ def main():
     parser.add_argument('--cfgfile', type=str, required=True, help='')
     
     args    = parser.parse_args()
+    cfgfile = args.cfgfile
     slipinv = DispForward(cfgfile)
     slipinv.run_fwd()
 

@@ -117,9 +117,7 @@ class SARData(object):
             unit      = unit vector
             cov_sar   = covariance matrix of LOS
         '''
-    
-        from numpy import vstack
-    
+
         # check the file is exit
         if os.path.isfile(filename) is False:
             logging.debug('InSAR file is not exist! Please edit YAML file!')
@@ -137,7 +135,7 @@ class SARData(object):
         unit = np.zeros((nsta, 3))
     
         # extract data
-        llh    = vstack((data[:,1], data[:,0])).T
+        llh    = data[:,[1,0]]
         ran    = data[:,2]
         unit   = data[:,3:6]
     

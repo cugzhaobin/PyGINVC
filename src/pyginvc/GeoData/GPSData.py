@@ -234,9 +234,6 @@ class GPSData(object):
         
         '''
     
-        from numpy import array, genfromtxt, zeros
-        import os, sys
-    
         # check the file is exit
         if not os.path.isfile(filename):
             logging.critical('{} does not exist! Please edit YAML file!'.format(filename))
