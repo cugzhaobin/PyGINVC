@@ -4,8 +4,8 @@
 import logging, h5py
 import os, time, glob
 import numpy as np
+from pandas import pandas as pd
 from numpy import column_stack, hstack, vstack, transpose
-from numpy import diag
 from pyginvc.Geometry.Fault import Fault
 from pyginvc.Geometry.Triangle import Triangle
 from pyginvc.Forward.TriForward import TriForward
@@ -142,7 +142,7 @@ class Output(object):
             self.write_triangle_slip('ts_slip_llh.gmtlin', total_slip)
             
         # print the status
-        logging.info('Fault slip distribution is ouput in geophysical system.')
+        logging.info('Fault slip distribution is ouput in geography system.')
     
     def write_rectangle_slip(self, filename, value):
         nf       = self.flt.nf
@@ -349,132 +349,198 @@ class Output(object):
 	    '''
 	
         
+#         if dhat is None or r is None:
+#             dhat = self.sol.dhat
+#             r    = self.sol.r
+#         len_gps = len(self.data.d_gps)
+#         len_lev = len(self.data.d_lev)
+#         len_sar = len(self.data.d_sar)
+#         len_geod= len_gps+len_lev
+#         len_all = len_geod+len_sar
+#         if len(self.data.llh_gps) > 0:
+#             nsta = len(self.data.llh_gps)
+#             if self.data.ndim == 2:
+#                 mod  = dhat[0:nsta*2].reshape((nsta,2))
+#                 obs  = self.data.d_gps.reshape((nsta,2))
+#                 sig  = np.sqrt(np.diag(self.data.cov_gps)).reshape((nsta,2))
+#                 llh  = self.data.llh_gps[:,[1,0]]
+#                 if len(self.data.station_gps) == nsta:
+#                     # observed
+#                     fmt  = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f\t%8s\n"
+#                     fmt3 = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f"
+#                     with open('gps_obs.gmtvec', 'w') as fid:
+#                         for i in range(nsta):
+#                             fid.write(fmt %(llh[i,0], llh[i,1], obs[i,0], obs[i,1], sig[i,0],
+#                                     sig[i,1], 0.0, self.data.station_gps[i]))
+
+#                     # modeled
+#                     with open('gps_mod.gmtvec', 'w') as fid:
+#                         for i in range(nsta):
+#                             fid.write(fmt %(llh[i,0], llh[i,1], mod[i,0], mod[i,1], 0.0,
+#                                     0.0, 0.0, self.data.station_gps[i]))
+
+#                     # residual
+#                     r_gps = obs - mod
+#                     with open('gps_res.gmtvec', 'w') as fid:
+#                         for i in range(nsta):
+#                             fid.write(fmt %(llh[i,0], llh[i,1], r_gps[i,0], r_gps[i,1], 0.0, 0.0, 0.0,
+#                                 self.data.station_gps[i]))
+#                 else:
+#                     # observed
+#                     fmt  = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f"
+#                     null = np.zeros((nsta,1))
+#                     outmatrix = hstack((llh, obs, sig, null))
+#                     np.savetxt("gps_obs.gmtvec", outmatrix, fmt=fmt)
+
+#                     # modeled
+#                     null = np.zeros((nsta,3))
+#                     outmatrix = hstack((llh, mod, null))
+#                     np.savetxt("gps_mod.gmtvec", outmatrix, fmt=fmt)
+
+#                     # residual
+#                     outmatrix = hstack((llh, obs-mod, null))
+#                     np.savetxt("gps_res.gmtvec", outmatrix, fmt=fmt)
+#             if self.data.ndim == 3:
+#                 mod  = dhat[0:nsta*3].reshape((nsta,3))
+#                 obs  = self.data.d_gps.reshape((nsta,3))
+#                 sig  = np.sqrt(np.diag(self.data.cov_gps)).reshape((nsta,3))
+#                 llh  = self.data.llh_gps[:,[1,0]]
+#                 if len(self.data.station_gps) == nsta:
+#                     # observed
+#                     fmt  = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f\t%8s\n"
+#                     fmt3 = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%8s\t%10.2f\t%5.2f\n"
+#                     with open('gps_obs.gmtvec', 'w') as fid:
+#                         for i in range(nsta):
+#                             fid.write(fmt %(llh[i,0], llh[i,1], obs[i,0], obs[i,1], sig[i,0],
+#                                     sig[i,1], 0.0, self.data.station_gps[i]))
+
+#                     with open('gps_obs_up.gmtvec', 'w') as fid:
+#                         for i in range(nsta):
+#                             fid.write(fmt %(llh[i,0], llh[i,1], 0.0, obs[i,2], 0.0, sig[i,2], 0.0,
+#                                 self.data.station_gps[i]))
+
+#                     # modeled
+#                     with open('gps_mod.gmtvec', 'w') as fid:
+#                         for i in range(nsta):
+#                             fid.write(fmt %(llh[i,0], llh[i,1], mod[i,0], mod[i,1], 0.0,
+#                                     0.0, 0.0, self.data.station_gps[i]))
+
+#                     with open('gps_mod_up.gmtvec', 'w') as fid:
+#                         for i in range(nsta):
+#                             fid.write(fmt %(llh[i,0], llh[i,1], 0.0, mod[i,2], 0.0, 0.0, 0.0,
+#                                 self.data.station_gps[i]))
+
+#                     # 3D 
+#                     with open('gps_mod_3d.gmtvec', 'w') as fid:
+#                         for i in range(nsta):
+#                             fid.write(fmt3 %(llh[i,0], llh[i,1], mod[i,0], mod[i,1], 0.0, 0.0, 0.0,
+#                                 self.data.station_gps[i], mod[i,2], 0.0))
+
+#                     # residual
+#                     r_gps = obs - mod
+#                     with open('gps_res.gmtvec', 'w') as fid:
+#                         for i in range(nsta):
+#                             fid.write(fmt %(llh[i,0], llh[i,1], r_gps[i,0], r_gps[i,1], 0.0, 0.0, 0.0,
+#                                 self.data.station_gps[i]))
+#                     with open('gps_res_up.gmtvec', 'w') as fid:
+#                         for i in range(nsta):
+#                             fid.write(fmt %(llh[i,0], llh[i,1], 0.0, r_gps[i,2], 0.0, 0.0, 0.0,
+#                                 self.data.station_gps[i]))
+#                 else:
+#                     # observed
+#                     fmt = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f"
+#                     fmt3 = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f"
+#                     outmatrix = np.column_stack((llh, obs[:,0:2], sig[:,0:2], np.zeros(nsta)))
+#                     np.savetxt("gps_obs.gmtvec", outmatrix, fmt=fmt)
+#                     outmatrix = np.column_stack((llh, np.zeros(nsta), obs[:,2], sig[:,2], np.zeros((nsta,2))))
+#                     np.savetxt("gps_obs_up.gmtvec", outmatrix, fmt=fmt)
+
+#                     # modeled
+#                     null = np.zeros((nsta,3))
+#                     outmatrix = np.column_stack((llh, mod[:,0:2], null))
+#                     np.savetxt("gps_mod.gmtvec", outmatrix, fmt=fmt)
+#                     outmatrix = np.column_stack((llh, null[:,0], mod[:,2], null))
+#                     np.savetxt("gps_mod_up.gmtvec", outmatrix, fmt=fmt)
+#                     outmatrix = np.column_stack((llh, mod, null))
+#                     np.savetxt("gps_mod_3d.gmtvec", outmatrix, fmt=fmt3)
+
+# 	                # residual
+#                     r_gps = obs - mod
+#                     outmatrix = np.column_stack((llh, r_gps[:,0:2], null))
+#                     np.savetxt("gps_res.gmtvec", outmatrix, fmt=fmt)
+#                     outmatrix = np.column_stack((llh, null[:,0], r_gps[:,2], null))
+#                     np.savetxt("gps_res_up.gmtvec", outmatrix, fmt=fmt)
+
+# 	        # print the status
+
         if dhat is None or r is None:
             dhat = self.sol.dhat
             r    = self.sol.r
+
+
+        self.Write_GPS_Data(dhat, r)
+        logging.info('Modeled and residual GPS points are output.')
+	
+        self.Write_LEV_Data(dhat, r)
+        self.Write_SAR_Data(dhat, r)
+	
+	    # print the status
+        logging.info('Modeled and residual geodetic data are output.')
+
+        return
+    
+    def Write_GPS_Data(self, dhat, r):
+        len_gps = len(self.data.d_gps)
+        nsta    = len(self.data.llh_gps)
+        if nsta == 0:
+            return
+        
+        llh     = self.data.llh_gps
+        station = self.data.station_gps
+        ndim    = self.data.ndim
+        
+        obs     = self.data.d_gps.reshape(nsta, ndim)
+        mod     = dhat[0:len_gps].reshape(nsta, ndim)
+        sig     = np.sqrt(np.diag(self.data.cov_gps)).reshape(nsta,ndim)
+        
+        output_cfg = []
+        
+        if ndim == 2:
+            output_cfg = [
+                ('obs', obs[:,0], obs[:,1], sig[:,0], sig[:,1], ''),
+                ('mod', mod[:,0], mod[:,1], 0, 0, ''),
+                ('res', obs[:,0]-mod[:,0], obs[:,1]-mod[:,1], 0, 0, '')
+                ]
+        if ndim == 3:
+            output_cfg = [
+                ('obs', obs[:,0], obs[:,1], sig[:,0], sig[:,1], ''),
+                ('mod', mod[:,0], mod[:,1], 0, 0, ''),
+                ('res', obs[:,0]-mod[:,0], obs[:,1]-mod[:,1], 0, 0, ''),
+                ('obs', 0, obs[:,2], 0, sig[:,2], '_up'),
+                ('mod', 0, mod[:,2], 0, 0, '_up'),
+                ('res', 0, obs[:,2]-mod[:,2], 0, 0, '_up')
+                ]
+        for name, east, north, sig_e, sig_n, suffix in output_cfg:
+            df = pd.DataFrame({
+                'lon': llh[:,1],
+                'lat': llh[:,0],
+                'east': east,
+                'north': north,
+                'sig_e': sig_e,
+                'sig_n': sig_n,
+                'corr': 0,
+                'station': station
+                })
+            
+            fname = f'gps_{name}{suffix}.gmtvec' if suffix else f'gps_{name}.gmtvec'
+            df.to_csv(fname, sep='\t', index=False, float_format='%10.4f', header=False)
+        
+
+    def Write_LEV_Data(self, dhat, r):
         len_gps = len(self.data.d_gps)
         len_lev = len(self.data.d_lev)
-        len_sar = len(self.data.d_sar)
         len_geod= len_gps+len_lev
-        len_all = len_geod+len_sar
-        if len(self.data.llh_gps) > 0:
-            nsta = len(self.data.llh_gps)
-            if self.data.ndim == 2:
-                mod  = dhat[0:nsta*2].reshape((nsta,2))
-                obs  = self.data.d_gps.reshape((nsta,2))
-                sig  = np.sqrt(np.diag(self.data.cov_gps)).reshape((nsta,2))
-                llh  = self.data.llh_gps[:,[1,0]]
-                if len(self.data.station_gps) == nsta:
-                    # observed
-                    fmt  = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f\t%8s\n"
-                    fmt3 = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f"
-                    with open('gps_obs.gmtvec', 'w') as fid:
-                        for i in range(nsta):
-                            fid.write(fmt %(llh[i,0], llh[i,1], obs[i,0], obs[i,1], sig[i,0],
-                                    sig[i,1], 0.0, self.data.station_gps[i].decode()))
-
-                    # modeled
-                    with open('gps_mod.gmtvec', 'w') as fid:
-                        for i in range(nsta):
-                            fid.write(fmt %(llh[i,0], llh[i,1], mod[i,0], mod[i,1], 0.0,
-                                    0.0, 0.0, self.data.station_gps[i].decode()))
-
-                    # residual
-                    r_gps = obs - mod
-                    with open('gps_res.gmtvec', 'w') as fid:
-                        for i in range(nsta):
-                            fid.write(fmt %(llh[i,0], llh[i,1], r_gps[i,0], r_gps[i,1], 0.0, 0.0, 0.0,
-                                self.data.station_gps[i].decode()))
-                else:
-                    # observed
-                    fmt  = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f"
-                    null = np.zeros((nsta,1))
-                    outmatrix = hstack((llh, obs, sig, null))
-                    np.savetxt("gps_obs.gmtvec", outmatrix, fmt=fmt)
-
-                    # modeled
-                    null = np.zeros((nsta,3))
-                    outmatrix = hstack((llh, mod, null))
-                    np.savetxt("gps_mod.gmtvec", outmatrix, fmt=fmt)
-
-                    # residual
-                    outmatrix = hstack((llh, obs-mod, null))
-                    np.savetxt("gps_res.gmtvec", outmatrix, fmt=fmt)
-            if self.data.ndim == 3:
-                mod  = dhat[0:nsta*3].reshape((nsta,3))
-                obs  = self.data.d_gps.reshape((nsta,3))
-                sig  = np.sqrt(diag(self.data.cov_gps)).reshape((nsta,3))
-                llh  = self.data.llh_gps[:,[1,0]]
-                if len(self.data.station_gps) == nsta:
-                    # observed
-                    fmt  = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f\t%8s\n"
-                    fmt3 = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%8s\t%10.2f\t%5.2f\n"
-                    with open('gps_obs.gmtvec', 'w') as fid:
-                        for i in range(nsta):
-                            fid.write(fmt %(llh[i,0], llh[i,1], obs[i,0], obs[i,1], sig[i,0],
-                                    sig[i,1], 0.0, self.data.station_gps[i].decode()))
-
-                    with open('gps_obs_up.gmtvec', 'w') as fid:
-                        for i in range(nsta):
-                            fid.write(fmt %(llh[i,0], llh[i,1], 0.0, obs[i,2], 0.0, sig[i,2], 0.0,
-                                self.data.station_gps[i].decode()))
-
-                    # modeled
-                    with open('gps_mod.gmtvec', 'w') as fid:
-                        for i in range(nsta):
-                            fid.write(fmt %(llh[i,0], llh[i,1], mod[i,0], mod[i,1], 0.0,
-                                    0.0, 0.0, self.data.station_gps[i].decode()))
-
-                    with open('gps_mod_up.gmtvec', 'w') as fid:
-                        for i in range(nsta):
-                            fid.write(fmt %(llh[i,0], llh[i,1], 0.0, mod[i,2], 0.0, 0.0, 0.0,
-                                self.data.station_gps[i].decode()))
-
-                    # 3D 
-                    with open('gps_mod_3d.gmtvec', 'w') as fid:
-                        for i in range(nsta):
-                            fid.write(fmt3 %(llh[i,0], llh[i,1], mod[i,0], mod[i,1], 0.0, 0.0, 0.0,
-                                self.data.station_gps[i].decode(), mod[i,2], 0.0))
-
-                    # residual
-                    r_gps = obs - mod
-                    with open('gps_res.gmtvec', 'w') as fid:
-                        for i in range(nsta):
-                            fid.write(fmt %(llh[i,0], llh[i,1], r_gps[i,0], r_gps[i,1], 0.0, 0.0, 0.0,
-                                self.data.station_gps[i].decode()))
-                    with open('gps_res_up.gmtvec', 'w') as fid:
-                        for i in range(nsta):
-                            fid.write(fmt %(llh[i,0], llh[i,1], 0.0, r_gps[i,2], 0.0, 0.0, 0.0,
-                                self.data.station_gps[i].decode()))
-                else:
-                    # observed
-                    fmt = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f"
-                    fmt3 = "%10.4f\t%10.4f\t%10.2f\t%10.2f\t%10.2f\t%5.2f\t%5.2f\t%5.2f"
-                    outmatrix = np.column_stack((llh, obs[:,0:2], sig[:,0:2], np.zeros(nsta)))
-                    np.savetxt("gps_obs.gmtvec", outmatrix, fmt=fmt)
-                    outmatrix = np.column_stack((llh, np.zeros(nsta), obs[:,2], sig[:,2], np.zeros(nsta,2)))
-                    np.savetxt("gps_obs_up.gmtvec", outmatrix, fmt=fmt)
-
-                    # modeled
-                    null = np.zeros((nsta,3))
-                    outmatrix = np.column_stack((llh, mod[:,0:2], null))
-                    np.savetxt("gps_mod.gmtvec", outmatrix, fmt=fmt)
-                    outmatrix = np.column_stack((llh, null[:,0], mod[:,2], null))
-                    np.savetxt("gps_mod_up.gmtvec", outmatrix, fmt=fmt)
-                    outmatrix = np.column_stack((llh, mod, null))
-                    np.savetxt("gps_mod_3d.gmtvec", outmatrix, fmt=fmt3)
-
-	                # residual
-                    r_gps = obs - mod
-                    outmatrix = np.column_stack((llh, r_gps[:,0:2], null))
-                    np.savetxt("gps_res.gmtvec", outmatrix, fmt=fmt)
-                    outmatrix = np.column_stack((llh, null[:,0], r_gps[:,2], null))
-                    np.savetxt("gps_res_up.gmtvec", outmatrix, fmt=fmt)
-
-	        # print the status
-            logging.info('%d modeled and residual GPS points are output.' %(len_gps))
-	
-	    # Read Level Data
+        
         if len(self.data.llh_lev) > 0:
             llh_lev   = self.data.llh_lev[:,[1,0]]
             d_lev     = self.data.d_lev
@@ -488,29 +554,29 @@ class Output(object):
             
             # print the status
             logging.info('%d modeled and residual LEV points are output.' %(len_lev))
-	
-	    # Read SAR Data
+    
+    def Write_SAR_Data(self, dhat, r):
+        len_gps = len(self.data.d_gps)
+        len_lev = len(self.data.d_lev)
+        len_sar = len(self.data.d_sar)
+        len_geod= len_gps+len_lev
+        len_all = len_geod+len_sar
         if len(self.data.llh_sar) > 0:
-            wsar       = self.data.wsar
+            wsar       = self.sol.WSAR
             llh_sar    = self.data.llh_sar[:,[1,0]]
             d_sar      = self.data.d_sar
 
             # residual
-            r_sar      = r[len_geod:len_all]/wsar
-            outmatrix  = vstack((llh_sar[:,0], llh_sar[:,1], r_sar)).T
+            r_sar      = r[len_geod:len_all]/np.diag(wsar)
+            outmatrix  = np.column_stack((llh_sar[:,0], llh_sar[:,1], r_sar))
             np.savetxt("sar_res.xyz", outmatrix, fmt="%10.4f\t%10.4f\t%10.2f")
 	
             # model
-            outmatrix  = vstack((llh_sar[:,0], llh_sar[:,1], (d_sar-r_sar)/wsar)).T
+            outmatrix  = np.column_stack((llh_sar[:,0], llh_sar[:,1], (d_sar-r_sar)/np.diag(wsar)))
             np.savetxt("sar_mod.xyz", outmatrix, fmt="%10.4f\t%10.4f\t%10.2f")
 
 	        # print the status
             logging.info('%d modeled and residual SAR points are output.' %(len_sar))
-	
-	    # print the status
-        logging.info('Modeled and residual geodetic data are output.')
-
-        return
             
     def archive_outfile(self):
         '''

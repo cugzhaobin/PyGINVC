@@ -23,11 +23,11 @@ class BaseGreen(object):
             data       = an instance of class GeoData
             dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
         '''
-        
+
         greenfile = dict_green['greenfile']
         beta      = 0.0
         if os.path.isfile(greenfile) == True:
-            self.LoadGreens(greenfile)
+            self.LoadGreens(greenfile, dict_green)
         else:
             self.GenGreens(flt, data, dict_green)
             self.SaveGreens()
@@ -36,13 +36,12 @@ class BaseGreen(object):
             beta = dict_green['rake_beta']
             self.RotateGreens(beta)
 
-        self.G_gps_ramp = None
-        self.G_sar_ramp = None
+        
         self.rake_beta = beta
         self.modulus   = float(dict_green['modulus'])
 
 
-    def LoadGreens(self, greenfile):
+    def LoadGreens(self, greenfile, dict_green):
         '''
         Load Green's function.
 
@@ -57,12 +56,19 @@ class BaseGreen(object):
             with h5py.File(greenfile, 'r') as h5:
                 self.G     = h5['G'][()]
                 self.G_sar = h5['G_sar'][()]
+                self.G_gps_ramp = h5['G_gps_ramp'][()]
+                self.G_sar_ramp = h5['G_sar_ramp'][()]
                 logging.info('Load Greens function from {}'.format(greenfile))
         elif ext == 'npy' or ext == 'npz':
             dat    = np.load('greenfile')
             self.G     = dat['G']
             self.G_sar = dat['G_sar']
             logging.info('Load Greens function from {}'.format(greenfile))
+            
+        if 'gps_ramp' in dict_green.keys() or dict_green['gps_ramp']==False:
+            self.G_gps_ramp = np.empty((self.G.shape[1],0))
+        if 'sar_ramp' in dict_green.keys() or dict_green['sar_ramp']==False:
+            self.G_sar_ramp = np.empty((self.G_sar.shape[1],0))
 
 
     def SaveGreens(self, greenfile='green.h5'):
@@ -73,6 +79,8 @@ class BaseGreen(object):
         with h5py.File('green.h5', 'w') as h5:
             h5.create_dataset('G', data = self.G, compression='gzip')
             h5.create_dataset('G_sar', data = self.G_sar, compression='gzip')
+            h5.create_dataset('G_gps_ramp', data = self.G_gps_ramp, compression='gzip')
+            h5.create_dataset('G_sar_ramp', data = self.G_sar_ramp, compression='gzip')
             logging.info('Green function is saved to green.h5')
 
     def RotateGreens(self, beta, greenfile='green_rot.h5'):

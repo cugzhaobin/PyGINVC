@@ -156,12 +156,12 @@ class Fault(object):
             xy_2end[i]  = gt.llh2utm([geom[i,5], geom[i,6]], origin)
             
         
-        leng     = sqrt(sum((xy_1end-xy_2end)**2, axis=1))
+        leng     = sqrt(np.sum((xy_1end-xy_2end)**2, axis=1))
             
         # strike angle of the fault
         dx = xy_1end[:,0] - xy_2end[:,0]
         dy = xy_1end[:,1] - xy_2end[:,1]
-        strik = rad2deg(math.atan2(dy, dx))
+        strik = rad2deg(np.arctan2(dy, dx))
         strik = 90-strik
             
         # local coordinates with respect to origin

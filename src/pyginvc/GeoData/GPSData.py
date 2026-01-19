@@ -245,7 +245,7 @@ class GPSData(object):
             if data.ndim == 1: data = data.reshape((1, len(data)))
         
             # load stations
-            station = np.genfromtxt(filename, usecols=7, comments='#', dtype='S') if data.shape[1]==10 else array([])
+            station = np.genfromtxt(filename, usecols=7, comments='#', dtype='str')
         
             # print read info
             nsta = len(data)

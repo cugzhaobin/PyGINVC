@@ -45,7 +45,7 @@ class GeoData(GPSData, LEVData, SARData):
         self.d_sar   = np.array([])
         self.d_lev   = np.array([])
         self.unit    = np.array([])
-        self.LoadAllData(gpsfiles, sarfiles, levfiles, gfiletype)
+        self.LoadGeoData(gpsfiles, sarfiles, levfiles, gfiletype)
         return
 
     def LoadAllData(self, gpsfile, sarfile, levfile, gfiletype):
@@ -112,21 +112,28 @@ class GeoData(GPSData, LEVData, SARData):
         d_lev   = [item.d_lev for item in lev_data]
         unit    = [item.unit  for item in sar_data]
         w_gps   = [item.W_gps for item in gps_data]
+        w_sar   = [item.W_sar for item in sar_data]
         w_lev   = [item.W_lev for item in lev_data]
+        cov_gps = [item.cov_gps for item in gps_data]
         n_gps   = [len(item.llh_gps) for item in gps_data]
         n_sar   = [len(item.llh_sar) for item in sar_data]
+        sta_gps = [item.station_gps for item in gps_data]
         w       = w_gps+w_lev
 
         self.llh_gps = np.vstack(llh_gps)
         self.llh_sar = np.vstack(llh_sar)
         self.llh_lev = np.vstack(llh_lev)
         self.d_gps   = np.hstack(d_gps)
+        self.cov_gps = linalg.block_diag(*cov_gps)
         self.d_sar   = np.hstack(d_sar)
         self.d_lev   = np.hstack(d_lev)
         self.unit    = np.vstack(unit)
         self.W       = linalg.block_diag(*w)
+        self.W_gps   = w_gps
+        self.W_sar   = linalg.block_diag(*w_sar)
         self.n_gps   = np.array(n_gps)
         self.n_sar   = np.array(n_sar)
+        self.station_gps = np.hstack(sta_gps)
 
         # print processing status
         logging.info('Finished load geodetic data for inversion.')

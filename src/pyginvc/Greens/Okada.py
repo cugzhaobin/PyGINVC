@@ -74,7 +74,7 @@ class Okada(BaseGreen):
                 xy_sar[i,:] = gt.llh2localxy(llh_sar[i], origin)
     
         # if we have GPS data
-        G_dis = np.array([])
+        G_dis = np.empty((0,0))
         if len(xy_gps) > 0 and len(dis_geom_grid)>0:
             G_dis = self.MakeGGPS(dis_geom_grid, xy_gps, nu, greentype[0], greentype[1], greentype[2], ndim)
     
@@ -84,7 +84,7 @@ class Okada(BaseGreen):
         G = G_dis
             
         # if we have level data
-        G_dis = np.array([])    
+        G_dis = np.empty((0,0))
         if len(xy_lev) > 0:
             G_dis = self.MakeGLEV(dis_geom_grid, xy_lev, nu, greentype[0], greentype[1], greentype[2])
             G = np.hstack((G, G_dis))
@@ -93,7 +93,7 @@ class Okada(BaseGreen):
                 logging.info('Green function for %d Level stations are computed.' %(len(xy_lev)))
         
         # if we have SAR data
-        G_sar   = np.array([])
+        G_sar   = np.empty((0,0))
         if len(xy_sar) > 0:
             G_sar = self.MakeGSAR(unit, dis_geom_grid, xy_sar, nu, greentype[0], greentype[1], greentype[2])
     
@@ -106,14 +106,18 @@ class Okada(BaseGreen):
         
         if 'gps_ramp' in dict_green.keys() and dict_green['gps_ramp']:
             self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim)
+        else:
+            self.G_gps_ramp = np.empty((self.G.shape[0],0))
         if 'sar_ramp' in dict_green.keys() and dict_green['sar_ramp']:
             sizes = data.n_sar
             G_sar_ramp = []
-            for i in range(sizes):
+            for i in range(len(sizes)):
                 start = sum(sizes[:i])
                 end   = sum(sizes[:i+1])
                 G_sar_ramp.append(self.MakeGSARRamp(xy_sar[start:end]))
             self.G_sar_ramp = linalg.block_diag(*G_sar_ramp)
+        else:
+            self.G_sar_ramp = np.empty((self.G_sar.shape[0],0))
 
         # print the status
         if verbose:

@@ -26,9 +26,9 @@ class SARData(object):
             sigma       = 
             lamda       =
         '''
-        self.llh_sar = np.array([])
+        self.llh_sar = np.empty((0,2))
         self.d_sar   = np.array([])
-        self.unit    = np.array([])
+        self.unit    = np.array((0,3))
         self.cov_sar = np.array([])
 
         self.LoadSARData(sarfile, scale=1.0)
@@ -59,10 +59,6 @@ class SARData(object):
             self.llh_sar  = llh_sar
             self.d_sar    = d_sar.flatten()*scale
             self.unit     = unit
-        else:
-            self.d_sar    = np.array([])
-            self.llh_sar  = np.array([])
-            self.unit     = np.array([])
     
         	# print processing status
         logging.info('{} InSAR points are loaded.'.format(len(self.llh_sar)))
@@ -82,10 +78,10 @@ class SARData(object):
         '''
 
         nlos      = len(self.llh_sar)
-        if sigma == 'None' or sigma == '':
+        if sigma == None or sigma == '':
             self.cov_sar = np.eye(nlos)
         else:
-            if lamda == 'None' or sigma == '':
+            if lamda == None or sigma == '':
                 self.cov_sar = np.eye(nlos)*sigma**2
             else:
                 distances = np.zeros((nlos, nlos))

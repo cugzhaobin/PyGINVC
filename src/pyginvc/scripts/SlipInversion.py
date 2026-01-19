@@ -39,7 +39,7 @@ class SlipInversion:
             self.cfg = cfg
             if args.sarfile is not None: self.cfg['dict_data']['sarfile']   = args.sarfile
             if args.gpsfile is not None: self.cfg['dict_data']['gpsfile']   = args.gpsfile
-            if args.lapmethod is not None: self.cfg['dict_data']['lapmethod'] = args.lapmethod
+#           if args.lapmethod is not None: self.cfg['dict_data']['lapmethod'] = args.lapmethod
             if args.outpath is not None: self.cfg['dict_data']['outpath']   = args.outpath
         return
 
