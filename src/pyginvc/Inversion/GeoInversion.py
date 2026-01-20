@@ -185,18 +185,15 @@ class GeoInversion(object):
                 WG_sar = WG_sar.reshape(-1, nf*3)
             G2I = np.vstack((WG, WG_sar, G_laps))
             Gramp = np.vstack([ linalg.block_diag(G_gps_ramp, G_sar_ramp),
-                               zeros((G_laps.shape[0], n_ramp))
-                ])
+                               zeros((G_laps.shape[0], n_ramp)) ])
             G2I = np.column_stack((G2I, Gramp))
      
             # invert the matrix G2I                    
-            Ginv           = np.linalg.pinv(G2I)
-            # compute the slip
+            Ginv        = np.linalg.pinv(G2I)
             slip[i]     = Ginv.dot(d2I)[0:3*nf]
             cov_slip    = Ginv.dot(Ginv.T)[0:3*nf,0:3*nf]
             sig_slip[i] = sqrt(diag(cov_slip))
-    
-            # print the status
+
             logging.info('Unconstrained linear least square finished.')
     
             # if constrained linear least square method is used
@@ -204,8 +201,7 @@ class GeoInversion(object):
                 res = optimize.lsq_linear(G2I, d2I, (bl, bu), method='bvls', lsmr_tol='auto')
                 slip[i] = res.x[0:3*nf]
                 ramp[i] = res.x[3*nf:]
-    
-                # print the status
+
                 logging.info('Constrained linear least square finished.')
                 
             # if len(d_sar) > 0:
@@ -227,7 +223,7 @@ class GeoInversion(object):
                 r_gps         = r[0:len_geod]
             
             # By Zhao Bin Jan 7 2017
-            r[len_geod:len_all] = d2R[len_geod:len_all]-WSAR@dhat[len_geod:len_all]
+            r[len_geod:len_all] = d2R[len_geod:len_all] - WSAR @ dhat[len_geod:len_all]
             r_sar               = r[len_geod:len_all]
     #       rnk[scount] = rank(G2I)
     
@@ -281,11 +277,7 @@ class GeoInversion(object):
         self.smo_facts  = smo_facts
         self.smoothness = smoothness
         self.WSAR       = WSAR
-        # self.data.wsar  = wsar
         self.ramp       = ramp
-        
-        return
-        
 
             
     @staticmethod 
@@ -304,21 +296,14 @@ class GeoInversion(object):
             Mw            = moment magnitude
         
         '''    
-        
-        nf = len(dis_geom_grid)
-        Mo = np.zeros(nf)
-        
-        for i in range(nf):
-            Mo[i] = (1e3*dis_geom_grid[i,0] *
-                     1e3*dis_geom_grid[i,1] *
-                     np.abs(np.sqrt(slip[i*3]**2+slip[3*i+1]**2)) * shearmodulus)
-        
+                
+        area     = dis_geom_grid[:,0] * dis_geom_grid[:,1] * 1e6
+        Mo       = area * slip * shearmodulus
         Mo_total = np.sum(Mo)/1e3
         Mw_total = 2.0/3.0*np.log10(Mo_total) - 6.067
-        
+
         return Mo_total, Mw_total
                 
-    
     @staticmethod
     def set_bounds(nsegs, ndeps, sar_switch, **varargin):
         '''
@@ -341,25 +326,25 @@ class GeoInversion(object):
         #     nelems = nelems + 3
             
         # Initialize variables
-        ss_range_c = 0
+        # ss_range_c = 0
         ss_range   = array([0,0])
-        ds_range_c = 0
+        # ds_range_c = 0
         ds_range   = array([0,0])
-        op_range_c = 0
+        # op_range_c = 0
         op_range   = array([0,0])
         surf_slip  = zeros(3*nsegs)
         surf_slip_c  = 0
         s_ss_range   = 0
-        s_ss_range_c = 0
+        # s_ss_range_c = 0
         s_ds_range   = 0
-        s_ds_range_c = 0
-        s_op_range_c = 0
+        # s_ds_range_c = 0
+        # s_op_range_c = 0
         s_op_range   = 0
         bot_slip     = zeros(3*nsegs)
         bot_slip_c   = 0
-        b_ss_range_c = 0 
-        b_ds_range_c = 0 
-        b_op_range_c = 0
+        # b_ss_range_c = 0 
+        # b_ds_range_c = 0 
+        # b_op_range_c = 0
         bu           = zeros(nelems)
         bl           = zeros(nelems)
         slip_lb      = ''

@@ -815,13 +815,16 @@ class Fault(object):
             fid.write("  </PolyData>\n")
             fid.write("</VTKFile>\n")
 
-    def plot_faultgeom(self, afsfile="", coordtype="llh", show_idx=False, azimuth=-40, elevation=40, sarfile="", gpsfile=""):
+    def plot_faultgeom(self, value=None, afsfile="", coordtype="llh", show_idx=False, azimuth=-40, elevation=40, sarfile="", gpsfile=""):
         """"""
         import matplotlib.pyplot as plt
         from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
         felem = self.FaultGeom2AllVertex()
         slip  = felem['total_slip'] / felem["total_slip"].max()
+        
+        if value is not None:
+            slip = value/max(slip)
     
         if coordtype == 'llh':
             x = felem[['lt_lon', 'rt_lon', 'rb_lon', 'lb_lon']]

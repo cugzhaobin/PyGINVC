@@ -1,12 +1,12 @@
 # Written by Zhao Bin, when he is at UC Berkeley. April 18 2016
 # Mod by Zhao Bin, Dec. 7, 2018. We use print() now.
-
+import numpy as np
 import logging, h5py
 import os, time, glob
-import numpy as np
 from pandas import pandas as pd
 from numpy import column_stack, hstack, vstack, transpose
 from pyginvc.Geometry.Fault import Fault
+#from pyginvc.Geometry.Patch import Fault
 from pyginvc.Geometry.Triangle import Triangle
 from pyginvc.Forward.TriForward import TriForward
 
@@ -129,17 +129,17 @@ class Output(object):
         sig_slip = self.sol.sig_slip[-1,0:nf*3]
         slip     = slip.reshape(nf, 3)
         sig_slip = sig_slip.reshape(nf, 3)
-        total_slip = np.sqrt(slip[:,0]**2 + slip[:,1]**2)
+        slip_mag = np.sqrt(slip[:,0]**2 + slip[:,1]**2)
         
         if self.flttype == 'rectangle':
             self.write_rectangle_slip('ss_slip_llh.gmtlin', slip[:,0])
             self.write_rectangle_slip('ds_slip_llh.gmtlin', slip[:,1])
-            self.write_rectangle_slip('ts_slip_llh.gmtlin', total_slip)
+            self.write_rectangle_slip('ts_slip_llh.gmtlin', slip_mag)
             
         if self.flttype == 'triangle':
             self.write_triangle_slip('ss_slip_llh.gmtlin', slip[:,0])
             self.write_triangle_slip('ds_slip_llh.gmtlin', slip[:,1])
-            self.write_triangle_slip('ts_slip_llh.gmtlin', total_slip)
+            self.write_triangle_slip('ts_slip_llh.gmtlin', slip_mag)
             
         # print the status
         logging.info('Fault slip distribution is ouput in geography system.')
@@ -148,12 +148,17 @@ class Output(object):
         nf       = self.flt.nf
         all_data = []
         
+        # felem    = self.flt.FaultGeom2AllVertex()
         for i in range(nf):
             all_data.append(f'>-Z{value[i]:.3f}')
             tl = self.flt.top_left_llh[i]
             tr = self.flt.top_right_llh[i]
             br = self.flt.bot_right_llh[i]
             bl = self.flt.bot_left_llh[i]
+            # tl = felem.top_left_llh[i]
+            # tr = felem.top_right_llh[i]
+            # br = felem.bot_right_llh[i]
+            # bl = felem.bot_left_llh[i]
             
             all_data.append(f'{tl[0]:10.3f} {tl[1]:10.3f} {tl[2]:10.3f}')
             all_data.append(f'{tr[0]:10.3f} {tr[1]:10.3f} {tr[2]:10.3f}')
@@ -193,8 +198,6 @@ class Output(object):
             slip = np.expand_dims(slip, axis=0)
 
         nscount, nslip = slip.shape
-        if self.flt.nf*3 < nslip:
-            slip = slip[:,:-3]
         
         if self.flttype == 'rectangle':
             for i in range(nscount):
@@ -291,8 +294,9 @@ class Output(object):
             logging.warning('Only %d smoothing factors.' % len(self.sol.smo_facts))
             return
         ruff_misfit = column_stack((self.sol.ruff, self.sol.misfit, self.sol.smo_facts, self.sol.moment))
-        fname = 'ruff_misfit'
-        np.savetxt(fname, ruff_misfit, fmt='%10.2f\t%10.2f\t%10.4f\t%10.2e\t%10.2f')
+        fname       = 'ruff_misfit'
+        header      = " Ruffness\t Misfit\t Smoothing_factor\t Moment"
+        np.savetxt(fname, ruff_misfit, header=header, fmt='%10.2f\t%10.2f\t%10.4f\t%10.2e\t%10.2f')
         logging.info('Roughness vs misfit is printed into ruff_misfit.')
         return
 	
@@ -303,17 +307,11 @@ class Output(object):
         
         geom_grid   = self.flt.geom_grid
         nsegs       = self.flt.nsegs
-        nf          = self.flt.nf
-        ss_slip     = np.zeros(nf)
-        ds_slip     = np.zeros(nf)
-        ss_sig_slip = np.zeros(nf)
-        ds_sig_slip = np.zeros(nf)
         patch       = 0.5*(geom_grid[0:nsegs,4] + geom_grid[0:nsegs,5])
-        for j in range(nf):
-            ss_slip[j]  = self.sol.slip[3*j]
-            ds_slip[j]  = self.sol.slip[3*j+1]
-            ss_sig_slip = self.sol.sig_slip[3*j]
-            ds_sig_slip = self.sol.sig_slip[3*j+1]
+        ss_slip     = self.sol.slip[0::3]
+        ds_slip     = self.sol.slip[1::3]
+        ss_sig_slip = self.sol.sig_slip[0::3]
+        ds_sig_slip = self.sol.sig_slip[1::3]
 	    
         patch = 0.5*(geom_grid[0:nsegs,4] + geom_grid[0:nsegs,5])
         ss_surface_slip = transpose(vstack((patch, ss_slip[0:nsegs], ss_sig_slip[0:nsegs])))
@@ -473,21 +471,14 @@ class Output(object):
 
 # 	        # print the status
 
-        if dhat is None or r is None:
+        if dhat is None:
             dhat = self.sol.dhat
             r    = self.sol.r
 
-
         self.Write_GPS_Data(dhat, r)
-        logging.info('Modeled and residual GPS points are output.')
-	
         self.Write_LEV_Data(dhat, r)
         self.Write_SAR_Data(dhat, r)
-	
-	    # print the status
-        logging.info('Modeled and residual geodetic data are output.')
 
-        return
     
     def Write_GPS_Data(self, dhat, r):
         len_gps = len(self.data.d_gps)
@@ -507,20 +498,20 @@ class Output(object):
         
         if ndim == 2:
             output_cfg = [
-                ('obs', obs[:,0], obs[:,1], sig[:,0], sig[:,1], ''),
-                ('mod', mod[:,0], mod[:,1], 0, 0, ''),
-                ('res', obs[:,0]-mod[:,0], obs[:,1]-mod[:,1], 0, 0, '')
+                ('obs', obs[:,0], obs[:,1], sig[:,0], sig[:,1]),
+                ('mod', mod[:,0], mod[:,1], 0, 0),
+                ('res', obs[:,0]-mod[:,0], obs[:,1]-mod[:,1], 0, 0)
                 ]
         if ndim == 3:
             output_cfg = [
-                ('obs', obs[:,0], obs[:,1], sig[:,0], sig[:,1], ''),
-                ('mod', mod[:,0], mod[:,1], 0, 0, ''),
-                ('res', obs[:,0]-mod[:,0], obs[:,1]-mod[:,1], 0, 0, ''),
-                ('obs', 0, obs[:,2], 0, sig[:,2], '_up'),
-                ('mod', 0, mod[:,2], 0, 0, '_up'),
-                ('res', 0, obs[:,2]-mod[:,2], 0, 0, '_up')
+                ('obs', obs[:,0], obs[:,1], sig[:,0], sig[:,1]),
+                ('mod', mod[:,0], mod[:,1], 0, 0),
+                ('res', obs[:,0]-mod[:,0], obs[:,1]-mod[:,1], 0, 0),
+                ('obs_up', 0, obs[:,2], 0, sig[:,2]),
+                ('mod_up', 0, mod[:,2], 0, 0),
+                ('res_up', 0, obs[:,2]-mod[:,2], 0, 0)
                 ]
-        for name, east, north, sig_e, sig_n, suffix in output_cfg:
+        for name, east, north, sig_e, sig_n in output_cfg:
             df = pd.DataFrame({
                 'lon': llh[:,1],
                 'lat': llh[:,0],
@@ -532,9 +523,21 @@ class Output(object):
                 'station': station
                 })
             
-            fname = f'gps_{name}{suffix}.gmtvec' if suffix else f'gps_{name}.gmtvec'
+            fname = f'gps_{name}.gmtvec'
             df.to_csv(fname, sep='\t', index=False, float_format='%10.4f', header=False)
-        
+        for name, _, _, _, _ in output_cfg:
+            fname = f'gps_{name}.gmtvec'
+            with open(fname) as f:
+                content = f.read()
+
+            if name[-2:] != 'up':
+                with open(fname, 'w') as f:
+                    f.write("#      Lon             Lat        East(mm)       North(mm)  SigE(mm)  SigN(mm)  Corr    Site\n" + content)
+            else:
+                with open(fname, 'w') as f:
+                    f.write("#      Lon             Lat        NULL(mm)          Up(mm)  NULL(mm)  SigU(mm)  Corr    Site\n" + content)
+                
+        logging.info('Modeled and residual GPS points are output.')
 
     def Write_LEV_Data(self, dhat, r):
         len_gps = len(self.data.d_gps)
@@ -561,19 +564,30 @@ class Output(object):
         len_sar = len(self.data.d_sar)
         len_geod= len_gps+len_lev
         len_all = len_geod+len_sar
-        if len(self.data.llh_sar) > 0:
-            wsar       = self.sol.WSAR
-            llh_sar    = self.data.llh_sar[:,[1,0]]
-            d_sar      = self.data.d_sar
-
+        
+        if len(self.data.d_sar) < 1:
+            return
+        
+        wsar       = self.sol.WSAR
+        llh_sar    = self.data.llh_sar[:,[1,0]]
+        d_sar      = self.data.d_sar
+        n_sar      = self.data.n_sar
+        r_sar      = r[len_geod:len_all]/np.diag(wsar)
+        for i in range(len(n_sar)):
+            idx0 = sum(n_sar[:i])
+            idx1 = sum(n_sar[:i+1])
+            
+            header = "Lon  Lat  LOS(mm)"
             # residual
-            r_sar      = r[len_geod:len_all]/np.diag(wsar)
-            outmatrix  = np.column_stack((llh_sar[:,0], llh_sar[:,1], r_sar))
-            np.savetxt("sar_res.xyz", outmatrix, fmt="%10.4f\t%10.4f\t%10.2f")
+            lon, lat  = llh_sar[idx0:idx1,0], llh_sar[idx0:idx1,1]
+            rsar      = r_sar[idx0:idx1,1]
+            outmatrix = np.column_stack((lon, lat, rsar))
+            np.savetxt(f"sar_res_{i+1}.xyz", outmatrix, header=header, fmt="%10.4f\t%10.4f\t%10.2f")
 	
             # model
-            outmatrix  = np.column_stack((llh_sar[:,0], llh_sar[:,1], (d_sar-r_sar)/np.diag(wsar)))
-            np.savetxt("sar_mod.xyz", outmatrix, fmt="%10.4f\t%10.4f\t%10.2f")
+            msar       = (d_sar[idx0:idx1] - rsar)/np.diag(wsar[idx0:idx1])
+            outmatrix  = np.column_stack((lon, lat, msar))
+            np.savetxt(f"sar_mod_{i+1}.xyz", outmatrix, header=header, fmt="%10.4f\t%10.4f\t%10.2f")
 
 	        # print the status
             logging.info('%d modeled and residual SAR points are output.' %(len_sar))

@@ -4,9 +4,10 @@
 # Mod by Zhao Bin, Dec. 7, 2018. We use HDF5 to store solutions
 
 import numpy as np
-import logging, sys
+import logging
+from scipy.linalg import block_diag
 from scipy import optimize
-from numpy import vstack, hstack, zeros, arange, sqrt, diag, sum, genfromtxt
+from numpy import zeros, arange, sqrt, diag, sum
 
 logging.basicConfig(
                     level=logging.INFO,
@@ -58,52 +59,64 @@ class TriInversion(object):
         G             = self.green.G
         G_sar         = self.green.G_sar
         G_lap         = self.lap.G_lap
+        G_gps_ramp    = self.green.G_gps_ramp
+        G_sar_ramp    = self.green.G_sar_ramp
         smoothfactor  = self.dict_weight['smoothfactor']
         dict_bound    = self.dict_bound
-        self.data.set_wsar(wsar)
+        n_ramp        = G_gps_ramp.shape[1]+G_sar_ramp.shape[1]
+        # self.data.set_wsar(wsar)
 
-        # count number of smoothing factors
-        scount         = 0
-        
-        # smooth factor
-        smo_fact_start = smoothfactor[0]
-        smo_fact_end   = smoothfactor[1]
-        smo_fact_step  = smoothfactor[2]
+        n_sar = self.data.n_sar
+        WSAR  = np.zeros_like(self.data.W_sar)
+        for i in range(len(n_sar)):
+            idx0 = sum(n_sar[:i])
+            idx1 = sum(n_sar[:i+1])
+            WSAR[idx0:idx1,idx0:idx1] = wsar[i]*self.data.W_sar[idx0:idx1,idx0:idx1]
     
-        len_sar        = len(d_sar)
         len_geod       = len(d_gps) + len(d_lev)
         len_all        = len_geod   + len(d_sar)
-        nf             = len(self.flt.element)
+        nf             = self.flt.nf
         d_lap          = np.zeros(3*nf)
-        D              = hstack((d_gps, d_lev));
+        D              = np.hstack((d_gps, d_lev))
     
+        if len_all < 1:
+            logging.fatal('No data to do inversion')
+            return
         # get d2I and d2R
-        if len_geod > 0:
-            if len_sar > 0:
-                d2I    = hstack((W.dot(D), wsar*d_sar, d_lap))
-                d2R    = hstack((W.dot(D), wsar*d_sar))
-            else:
-                d2I    = hstack((W.dot(D), d_lap))
-                d2R    = W.dot(D)
-        else:
-            if len_sar > 0:
-                d2I    = hstack((wsar*d_sar, d_lap))
-                d2R    = wsar*d_sar
-            else:
-                logging.warning('Final error, no data to do inversion')
-                return
+        # if len_geod > 0:
+        #     if len_sar > 0:
+        #         d2I    = hstack((W.dot(D), wsar*d_sar, d_lap))
+        #         d2R    = hstack((W.dot(D), wsar*d_sar))
+        #     else:
+        #         d2I    = hstack((W.dot(D), d_lap))
+        #         d2R    = W.dot(D)
+        # else:
+        #     if len_sar > 0:
+        #         d2I    = hstack((wsar*d_sar, d_lap))
+        #         d2R    = wsar*d_sar
+        #     else:
+        #         logging.warning('Final error, no data to do inversion')
+        #         return
+        d2I = np.hstack((W@D, WSAR@d_sar, d_lap))
+        d2R = np.hstack((W@D, WSAR@d_sar))
     
         # get the number of smoothing
+        # smo_facts      = arange(smo_fact_start, smo_fact_end, smo_fact_step)
+        # if len(smo_facts) == 0:
+        #     logging.critical('Please check the input smoothing parameters')
+        #     sys.exit()
+        # else:
+        #     nsmooth    = len(smo_facts)
+            
+        # smooth factor
+        smo_fact_start, smo_fact_end,  smo_fact_step = smoothfactor
         smo_facts      = arange(smo_fact_start, smo_fact_end, smo_fact_step)
-        if len(smo_facts) == 0:
-            logging.critical('Please check the input smoothing parameters')
-            sys.exit()
-        else:
-            nsmooth    = len(smo_facts)
+        nsmooth        = len(smo_facts) if len(smo_facts)>0 else 1
+        
         # init parameters
         slip           = zeros((nsmooth, 3*nf))
         sig_slip       = zeros((nsmooth, 3*nf))
-        slipb          = zeros((nsmooth, 3*nf))
+        # slipb          = zeros((nsmooth, 3*nf))
         r              = zeros(len_all)
         misfit         = zeros(nsmooth)
         misfit_sar     = zeros(nsmooth)
@@ -111,94 +124,110 @@ class TriInversion(object):
         smoothness     = zeros(nsmooth)
         ruff           = zeros(nsmooth)
         moment         = zeros((nsmooth,2))
-        ss_slip        = zeros((nsmooth, nf))
-        ss_sig_slip    = zeros((nsmooth, nf))
-        dip_slip       = zeros((nsmooth, nf))
-        dip_sig_slip   = zeros((nsmooth, nf))
-        openning       = zeros((nsmooth, nf))
-        op_sig_slip    = zeros((nsmooth, nf))
-        G2I            = zeros((len(D)+nf, nf))
+        ramp           = zeros((nsmooth, n_ramp))
+        # ss_slip        = zeros((nsmooth, nf))
+        # ss_sig_slip    = zeros((nsmooth, nf))
+        # dip_slip       = zeros((nsmooth, nf))
+        # dip_sig_slip   = zeros((nsmooth, nf))
+        # openning       = zeros((nsmooth, nf))
+        # op_sig_slip    = zeros((nsmooth, nf))
+        # G2I            = zeros((len(D)+nf, nf))   
         sar_switch     = False
-        dhat           = np.empty(0)
         
-        if len(d_sar) > 0 and sar_switch == True:
-            slip           = zeros((nsmooth, 3*nf+3))
-            sig_slip       = zeros((nsmooth, 3*nf+3))
-            slipb          = zeros((nsmooth, 3*nf+3))
+        # if len(d_sar) > 0 and sar_switch == True:
+        #     slip           = zeros((nsmooth, 3*nf+3))
+        #     sig_slip       = zeros((nsmooth, 3*nf+3))
+        #     slipb          = zeros((nsmooth, 3*nf+3))
 
-        if 'sar_plane_range' in dict_bound.keys() and len(G_sar)>3:
-            splane_range   = dict_bound['sar_plane_range']
-            if len(splane_range) == 0:
-                G_sar[:,-3:] = 0.0
+        # if 'sar_plane_range' in dict_bound.keys() and len(G_sar)>3:
+        #     splane_range   = dict_bound['sar_plane_range']
+        #     if len(splane_range) == 0:
+        #         G_sar[:,-3:] = 0.0
     
         if dict_bound['bound_switch']:
-            [bu, bl]       = self.set_bounds(len(self.flt.element), sar_switch, **dict_bound)  
+            [bu, bl] = self.set_bounds(len(self.flt.element), sar_switch, **dict_bound)
+            if n_ramp>0:
+                bl = np.hstack([bl, np.full(n_ramp, -np.inf)])
+                bu = np.hstack([bu, np.full(n_ramp,  np.inf)])
        
             # print the status
             logging.info('Boundaries for constrained linear is constructed.')
         
         # for each smooth factor   
-        for smo_fact in arange(smo_fact_start, smo_fact_end, smo_fact_step):
+        for i, smo_fact in enumerate(smo_facts):
             
             # print the status
-            logging.info('Inverting for No. %d with smooth factor %f' %(scount+1, smo_fact))
+            logging.info('Inverting for No. %d with smooth factor %f' %(i+1, smo_fact))
             
             # scale the G_lap
             G_laps     = smo_fact*G_lap
                         
             # if we use InSAR data to do inversion
-            if len_sar > 0:
-                # MOD By Zhao Bin, Jan 7 2017
-                if len(wsar) == len_sar:
-                    wsar = wsar.reshape((len_sar,1))
+#             if len_sar > 0:
+#                 # MOD By Zhao Bin, Jan 7 2017
+#                 if len(wsar) == len_sar:
+#                     wsar = wsar.reshape((len_sar,1))
     
-                # and if we use GPS and Level data to do inversion, combing all Green functions
-                if len_geod > 0:
-#                   G2I    = vstack((hstack((W.dot(G), zeros((len_geod,3)))), wsar*G_sar, hstack((G_laps, zeros((nf*3,3))))))
-                    G2I    = vstack((W.dot(G), wsar*G_sar, G_laps))
-                else:
-#                   G2I    = vstack((wsar*G_sar, hstack((G_laps, zeros((nf*3,3))))))
-                    G2I    = vstack((wsar*G_sar, G_laps))
-            else:
-                G2I        = vstack((W.dot(G), G_laps))
+#                 # and if we use GPS and Level data to do inversion, combing all Green functions
+#                 if len_geod > 0:
+# #                   G2I    = vstack((hstack((W.dot(G), zeros((len_geod,3)))), wsar*G_sar, hstack((G_laps, zeros((nf*3,3))))))
+#                     G2I    = vstack((W.dot(G), wsar*G_sar, G_laps))
+#                 else:
+# #                   G2I    = vstack((wsar*G_sar, hstack((G_laps, zeros((nf*3,3))))))
+#                     G2I    = vstack((wsar*G_sar, G_laps))
+#             else:
+#                 G2I        = vstack((W.dot(G), G_laps))
+
+            if len(G) == 0:
+                G = G.reshape(-1,3*nf)
+            if len(G_sar) == 0:
+                G_sar = G_sar.reshape(-1,3*nf)
+            WG     = W@G
+            WG_sar = WSAR @ G_sar
+            if len(G) == 0:
+                WG = WG.reshape(-1, nf*3)
+            if len(G_sar) == 0:
+                WG_sar = WG_sar.reshape(-1, nf*3)
+            G2I = np.vstack((WG, WG_sar, G_laps))
+            Gramp = np.vstack([ block_diag(G_gps_ramp, G_sar_ramp),
+                               zeros((G_laps.shape[0], n_ramp)) ])
+            G2I = np.column_stack((G2I, Gramp))
     
             # invert the matrix G2I                    
-            Ginv           = np.linalg.pinv(G2I)
-            # compute the slip
-            slip[scount,:] = Ginv.dot(d2I)
-            cov_slip       = Ginv.dot(Ginv.T)
-            sig_slip[scount,:] = sqrt(diag(cov_slip))
-    
-            # print the status
+            Ginv        = np.linalg.pinv(G2I)
+            slip[i]     = Ginv.dot(d2I)[0:3*nf]
+            cov_slip    = Ginv.dot(Ginv.T)[0:3*nf,0:3*nf]
+            sig_slip[i] = sqrt(diag(cov_slip))
+
             logging.info('Unconstrained linear least square finished.')
     
             # if constrained linear least square method is used
             if dict_bound['bound_switch']:
                 res = optimize.lsq_linear(G2I, d2I, (bl, bu), method='bvls')
-                slipb[scount,:] = res.x
-                slip[scount,:] = slipb[scount,:]
-                [m,n] = G2I.shape           
+                slip[i] = res.x[0:3*nf]
+                ramp[i] = res.x[3*nf:] 
     
-                # print the status
                 logging.info('Constrained linear least square finished.')
     
-            if len(d_sar) > 0:
-                if len(G) == 0:
-                    dhat = G_sar.dot(slip[scount,:])
-                else:
-#                   dhat = vstack((hstack((G, zeros((len_geod,3)))), G_sar)).dot(slip[scount,:])
-                    dhat = vstack((G, G_sar)).dot(slip[scount,:])
+#             if len(d_sar) > 0:
+#                 if len(G) == 0:
+#                     dhat = G_sar.dot(slip[scount,:])
+#                 else:
+# #                   dhat = vstack((hstack((G, zeros((len_geod,3)))), G_sar)).dot(slip[scount,:])
+#                     dhat = vstack((G, G_sar)).dot(slip[scount,:])
     
-            else:
-                dhat = G.dot(slip[scount,:])
+#             else:
+#                 dhat = G.dot(slip[scount,:])
+
+            dhat = np.column_stack((
+                np.vstack((G, G_sar)), block_diag(G_gps_ramp, G_sar_ramp)
+                )) @ res.x
             
             if len_geod > 0:
                 r[0:len_geod] = d2R[0:len_geod] - W.dot(dhat[0:len_geod])
                 r_gps         = r[0:len_geod]
-            
-            # By Zhao Bin Jan 7 2017
-            if len(wsar) == len_sar:  wsar = wsar.flatten()
-            r[len_geod:len_all] = d2R[len_geod:len_all]-wsar*dhat[len_geod:len_all]
+
+            r[len_geod:len_all] = d2R[len_geod:len_all] - WSAR @ dhat[len_geod:len_all]
             r_sar               = r[len_geod:len_all]
     #       rnk[scount] = rank(G2I)
     
@@ -207,41 +236,39 @@ class TriInversion(object):
                 n_gps = len(d_gps)
                 logging.info('GPS Weighted Residual Sum of Squares (WRSS) %10.3f' %(r_gps.dot(r_gps)))
                 logging.info('GPS: WRSS/(N) %f' %(r_gps.dot(r_gps)/n_gps))
-                misfit_gps[scount] = r_gps.dot(r_gps)
+                misfit_gps[i] = r_gps.dot(r_gps)
                 
                 
             if len(d_sar) > 0:
                 n_sar = len(d_sar)
                 logging.info('SAR Weighted Residual Sum of Squares (WRSS) %10.3f' %(r_sar.dot(r_sar)))
                 logging.info('SAR: WRSS/(N) %f' %(r_sar.dot(r_sar)/n_sar))
-                misfit_sar[scount] = r_sar.dot(r_sar)
+                misfit_sar[i] = r_sar.dot(r_sar)
             
-            misfit[scount] = r.dot(r)
+            misfit[i] = r.dot(r)
             
-            smoothness[scount] = sum( (smo_fact*slip[scount,0:3*nf].dot(G_lap)) * (smo_fact*slip[scount,0:3*nf].dot(G_lap)) )
-            ruff[scount]       = sum( (slip[scount,0:3*nf].dot(G_lap)) * (slip[scount,0:3*nf].dot(G_lap)) )
+            smoothness[i] = sum( (smo_fact*slip[i].dot(G_lap)) * (smo_fact*slip[i].dot(G_lap)) )
+            ruff[i]       = sum( (slip[i].dot(G_lap)) * (slip[i].dot(G_lap)) )
             
             
             # print slip
-            for k in range(nf):
-                ss_slip[scount, k]      = slip[scount, 3*k]
-                ss_sig_slip[scount, k]  = sig_slip[scount, 3*k]
-                dip_slip[scount, k]     = slip[scount, 3*k+1]
-                dip_sig_slip[scount, k] = sig_slip[scount, 3*k+1]
-                openning[scount, k]     = slip[scount, 3*k+2]
-                op_sig_slip[scount, k]  = sig_slip[scount, 3*k+2]
+            # for k in range(nf):
+            #     ss_slip[scount, k]      = slip[scount, 3*k]
+            #     ss_sig_slip[scount, k]  = sig_slip[scount, 3*k]
+            #     dip_slip[scount, k]     = slip[scount, 3*k+1]
+            #     dip_sig_slip[scount, k] = sig_slip[scount, 3*k+1]
+            #     openning[scount, k]     = slip[scount, 3*k+2]
+            #     op_sig_slip[scount, k]  = sig_slip[scount, 3*k+2]
     
     
             # compute the moment
-            shearmodulus= self.green.modulus
-            [Mo, Mw]  = self.moment_tri_element(self.flt.vertex_enu, self.flt.element, slip[scount,:], shearmodulus)
-            moment[scount] = np.array([Mo, Mw])            
+            shearmodulus = self.green.modulus
+            [Mo, Mw]     = self.moment_tri_element(self.flt.vertex_enu, self.flt.element, slip[i], shearmodulus)
+            moment[i]    = np.array([Mo, Mw])            
             
             # print the status
             logging.info('Geodetic Moment Magnitude M0 = %E' %(Mo))
             logging.info('Geodetic Moment Magnitude Mw = %f' %(Mw))
-    
-            scount = scount+1
     
         self.ruff       = ruff
         self.misfit_gps = misfit_gps
@@ -254,8 +281,8 @@ class TriInversion(object):
         self.moment     = moment
         self.smo_facts  = smo_facts
         self.smoothness = smoothness
-        self.wsar       = wsar
-        self.data.wsar  = wsar
+        self.WSAR       = WSAR
+        self.ramp       = ramp
         
         return
         
@@ -277,31 +304,21 @@ class TriInversion(object):
             Mw       : magnitude
         '''
         
-        nelem   = len(element)
-        Mo      = np.zeros(nelem)
-        
-        for i in range(nelem):
-            id1 = element[i,0]-1
-            id2 = element[i,1]-1
-            id3 = element[i,2]-1
-            
-            len1 = np.sqrt((vertex[id1,0]-vertex[id2,0])**2 + 
-                           (vertex[id1,1]-vertex[id2,1])**2 +
-                           (vertex[id1,2]-vertex[id2,2])**2)
-            len2 = np.sqrt((vertex[id1,0]-vertex[id3,0])**2 + 
-                           (vertex[id1,1]-vertex[id3,1])**2 +
-                           (vertex[id1,2]-vertex[id3,2])**2)
-            len3 = np.sqrt((vertex[id3,0]-vertex[id2,0])**2 + 
-                           (vertex[id3,1]-vertex[id2,1])**2 +
-                           (vertex[id3,2]-vertex[id2,2])**2)
-            s     = 0.5*(len1+len2+len3)
-            area  = np.sqrt(s*(s-len1)*(s-len2)*(s-len3))
-            Mo[i] = 1e6 * area * np.abs(np.sqrt(slip[3*i]**2 + slip[3*i+1]**2)) * shearmodulus
+        idx1    = element[:,0]-1
+        idx2    = element[:,1]-1
+        idx3    = element[:,2]-1
+        v1      = vertex[idx1]
+        v2      = vertex[idx2]
+        v3      = vertex[idx3]
+
+        vec1    = v2 - v1
+        vec2    = v3 - v1
+        cross   = np.cross(vec1, vec2)
+        area    = 0.5 * np.linalg.norm(cross, axis=1)
+        Mo      = 1e6 * area * slip * shearmodulus
         Mo_total  = np.sum(Mo)/1000.0
         Mw_total  = 2.0/3.0*np.log10(Mo_total) - 6.067
-        
-        return Mo_total, Mw_total        
-        
+        return Mo_total, Mw_total
     
     @staticmethod
     def set_bounds(nelements, sar_switch, **varargin):
@@ -363,8 +380,8 @@ class TriInversion(object):
                 slip_ub = v
 
         nelems    = 3*nelements
-        if sar_switch == True:
-            nelems = nelems + 3
+        # if sar_switch == True:
+        #     nelems = nelems + 3
 
         bl = np.zeros((nelements,3))
         bu = np.zeros((nelements,3))
@@ -382,8 +399,8 @@ class TriInversion(object):
         # if slip bound files are exist, then overwrite the bound array bu and bl
         if slip_lb != '' and slip_ub != '':
             nelems    = 3*nelements
-            bl[0:nelems] = genfromtxt(slip_lb, usecols = [3,4,5]).reshape(nelems)
-            bu[0:nelems] = genfromtxt(slip_ub, usecols = [3,4,5]).reshape(nelems)
+            bl[0:nelems] = np.genfromtxt(slip_lb, usecols = [3,4,5]).reshape(nelems)
+            bu[0:nelems] = np.genfromtxt(slip_ub, usecols = [3,4,5]).reshape(nelems)
     
         return bu, bl 
 
