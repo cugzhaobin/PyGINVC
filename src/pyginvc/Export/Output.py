@@ -5,8 +5,8 @@ import logging, h5py
 import os, time, glob
 from pandas import pandas as pd
 from numpy import column_stack, hstack, vstack, transpose
-from pyginvc.Geometry.Fault import Fault
-#from pyginvc.Geometry.Patch import Fault
+#from pyginvc.Geometry.Fault import Fault
+from pyginvc.Geometry.Patch import Fault
 from pyginvc.Geometry.Triangle import Triangle
 from pyginvc.Forward.TriForward import TriForward
 
@@ -148,22 +148,22 @@ class Output(object):
         nf       = self.flt.nf
         all_data = []
         
-        # felem    = self.flt.FaultGeom2AllVertex()
+        felem    = self.flt.FaultGeom2AllVertex()
         for i in range(nf):
             all_data.append(f'>-Z{value[i]:.3f}')
-            tl = self.flt.top_left_llh[i]
-            tr = self.flt.top_right_llh[i]
-            br = self.flt.bot_right_llh[i]
-            bl = self.flt.bot_left_llh[i]
-            # tl = felem.top_left_llh[i]
-            # tr = felem.top_right_llh[i]
-            # br = felem.bot_right_llh[i]
-            # bl = felem.bot_left_llh[i]
+            #tl = self.flt.top_left_llh[i]
+            #tr = self.flt.top_right_llh[i]
+            #br = self.flt.bot_right_llh[i]
+            #bl = self.flt.bot_left_llh[i]
+            tl = [felem['lt_lon'][i], felem['lt_lat'][i], felem['lt_dep'][i]]
+            tr = [felem['rt_lon'][i], felem['rt_lat'][i], felem['rt_dep'][i]]
+            br = [felem['rb_lon'][i], felem['rb_lat'][i], felem['rb_dep'][i]]
+            bl = [felem['lb_lon'][i], felem['lb_lat'][i], felem['lb_dep'][i]]
             
-            all_data.append(f'{tl[0]:10.3f} {tl[1]:10.3f} {tl[2]:10.3f}')
-            all_data.append(f'{tr[0]:10.3f} {tr[1]:10.3f} {tr[2]:10.3f}')
-            all_data.append(f'{br[0]:10.3f} {br[1]:10.3f} {br[2]:10.3f}')
-            all_data.append(f'{bl[0]:10.3f} {bl[1]:10.3f} {bl[2]:10.3f}')
+            all_data.append(f'{tl[0]:10.4f} {tl[1]:10.4f} {tl[2]:10.4f}')
+            all_data.append(f'{tr[0]:10.4f} {tr[1]:10.4f} {tr[2]:10.4f}')
+            all_data.append(f'{br[0]:10.4f} {br[1]:10.4f} {br[2]:10.4f}')
+            all_data.append(f'{bl[0]:10.4f} {bl[1]:10.4f} {bl[2]:10.4f}')
         
         header = '# Rectangle fault slip model'
         np.savetxt(filename, all_data, fmt='%s', header=header)
@@ -204,7 +204,7 @@ class Output(object):
                 islip = slip[i].reshape((self.flt.nf, 3))
                 patchFaultGeom = np.hstack((self.flt.geom_grid[:, 0:7], islip))
                 fname = 'slipmodel_{:03d}.faultgeom'.format(i+1)
-                fmt   = 7*'%11.3f'+3*'%13.3f'
+                fmt   = 7*'%11.4f'+3*'%13.3f'
                 header  = " width_km   depth_km    dip_deg   lat0_deg   lon0_deg   lat1_deg   lon1_deg  slp_strk_mm  slp_ddip_mm  slp_tens_mm"
                 np.savetxt(fname, patchFaultGeom, fmt=fmt, header=header)
 
@@ -223,7 +223,7 @@ class Output(object):
                 islip = slip[i].reshape((self.flt.nf, 3))
                 patchFaultGeom = np.hstack((self.flt.element, islip))
                 fname = 'slipmodel_%03d.tri' % (i + 1)
-                fmt   = '%5d %5d %5d %15.3f %15.3f %15.3f'
+                fmt   = '%5d %5d %5d %15.4f %15.4f %15.4f'
                 np.savetxt(fname, patchFaultGeom, fmt=fmt)
 
                 # Rotate slip back to normal fault coordinate system
@@ -495,7 +495,6 @@ class Output(object):
         sig     = np.sqrt(np.diag(self.data.cov_gps)).reshape(nsta,ndim)
         
         output_cfg = []
-        
         if ndim == 2:
             output_cfg = [
                 ('obs', obs[:,0], obs[:,1], sig[:,0], sig[:,1]),
@@ -580,12 +579,12 @@ class Output(object):
             header = "Lon  Lat  LOS(mm)"
             # residual
             lon, lat  = llh_sar[idx0:idx1,0], llh_sar[idx0:idx1,1]
-            rsar      = r_sar[idx0:idx1,1]
+            rsar      = r_sar[idx0:idx1]
             outmatrix = np.column_stack((lon, lat, rsar))
             np.savetxt(f"sar_res_{i+1}.xyz", outmatrix, header=header, fmt="%10.4f\t%10.4f\t%10.2f")
 	
             # model
-            msar       = (d_sar[idx0:idx1] - rsar)/np.diag(wsar[idx0:idx1])
+            msar       = (d_sar[idx0:idx1] - rsar)/np.diag(wsar)[idx0:idx1]
             outmatrix  = np.column_stack((lon, lat, msar))
             np.savetxt(f"sar_mod_{i+1}.xyz", outmatrix, header=header, fmt="%10.4f\t%10.4f\t%10.2f")
 

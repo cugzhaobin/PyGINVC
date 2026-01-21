@@ -135,6 +135,11 @@ class GeoData(GPSData, LEVData, SARData):
         self.n_sar   = np.array(n_sar)
         self.station_gps = np.hstack(sta_gps)
 
+        if gfiletype[-2:] == '2D':
+            self.ndim = 2
+        if gfiletype[-2:] == '3D':
+            self.ndim = 3
+
         # print processing status
         logging.info('Finished load geodetic data for inversion.')
         
@@ -144,7 +149,6 @@ class GeoData(GPSData, LEVData, SARData):
         elif isinstance(file_input, list):
             return file_input
         
-
     def DumpData(self):
         '''
         '''

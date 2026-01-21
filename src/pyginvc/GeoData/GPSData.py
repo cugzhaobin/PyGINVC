@@ -112,7 +112,7 @@ class GPSData(object):
                 data = data.reshape((1, len(data)))
     
             # load stations
-            station = np.genfromtxt(filename, usecols=7, comments='#', dtype='S') if data.shape[1]==10 else array([])
+            station = np.genfromtxt(filename, usecols=7, comments='#', dtype='S')
 
             nsta = len(data)
             nvec = nsta

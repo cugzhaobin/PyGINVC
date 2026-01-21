@@ -298,7 +298,9 @@ class GeoInversion(object):
         '''    
                 
         area     = dis_geom_grid[:,0] * dis_geom_grid[:,1] * 1e6
-        Mo       = area * slip * shearmodulus
+        slip     = slip.reshape(-1,3)
+        slip_mag = np.linalg.norm(slip[:,0:2], axis=1)
+        Mo       = area * slip_mag * shearmodulus
         Mo_total = np.sum(Mo)/1e3
         Mw_total = 2.0/3.0*np.log10(Mo_total) - 6.067
 

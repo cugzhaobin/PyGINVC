@@ -68,6 +68,7 @@ class TriInversion(object):
 
         n_sar = self.data.n_sar
         WSAR  = np.zeros_like(self.data.W_sar)
+        assert len(n_sar) == len(wsar), "Number of wsar should be the same as sar data"
         for i in range(len(n_sar)):
             idx0 = sum(n_sar[:i])
             idx1 = sum(n_sar[:i+1])
@@ -315,7 +316,9 @@ class TriInversion(object):
         vec2    = v3 - v1
         cross   = np.cross(vec1, vec2)
         area    = 0.5 * np.linalg.norm(cross, axis=1)
-        Mo      = 1e6 * area * slip * shearmodulus
+        slip    = slip.reshape(-1,3)
+        slip_mag= np.linalg.norm(slip[:,0:2], axis=1)
+        Mo      = 1e6 * area * slip_mag * shearmodulus
         Mo_total  = np.sum(Mo)/1000.0
         Mw_total  = 2.0/3.0*np.log10(Mo_total) - 6.067
         return Mo_total, Mw_total

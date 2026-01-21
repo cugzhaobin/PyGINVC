@@ -109,7 +109,7 @@ class Nikkhoo(BaseGreen):
         if 'sar_ramp' in dict_green.keys():
             sizes = data.n_sar
             G_sar_ramp = []
-            for i in range(sizes):
+            for i in range(len(sizes)):
                 start = sum(sizes[:i])
                 end   = sum(sizes[:i+1])
                 G_sar_ramp.append(self.MakeGSARRamp(xy_sar[start:end]))
