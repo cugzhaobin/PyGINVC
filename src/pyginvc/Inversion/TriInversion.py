@@ -7,7 +7,6 @@ import numpy as np
 import logging
 from scipy.linalg import block_diag
 from scipy import optimize
-from numpy import zeros, arange, sqrt, diag, sum
 
 logging.basicConfig(
                     level=logging.INFO,
@@ -111,21 +110,21 @@ class TriInversion(object):
             
         # smooth factor
         smo_fact_start, smo_fact_end,  smo_fact_step = smoothfactor
-        smo_facts      = arange(smo_fact_start, smo_fact_end, smo_fact_step)
+        smo_facts      = np.arange(smo_fact_start, smo_fact_end, smo_fact_step)
         nsmooth        = len(smo_facts) if len(smo_facts)>0 else 1
         
         # init parameters
-        slip           = zeros((nsmooth, 3*nf))
-        sig_slip       = zeros((nsmooth, 3*nf))
+        slip           = np.zeros((nsmooth, 3*nf))
+        sig_slip       = np.zeros((nsmooth, 3*nf))
         # slipb          = zeros((nsmooth, 3*nf))
-        r              = zeros(len_all)
-        misfit         = zeros(nsmooth)
-        misfit_sar     = zeros(nsmooth)
-        misfit_gps     = zeros(nsmooth)
-        smoothness     = zeros(nsmooth)
-        ruff           = zeros(nsmooth)
-        moment         = zeros((nsmooth,2))
-        ramp           = zeros((nsmooth, n_ramp))
+        r              = np.zeros(len_all)
+        misfit         = np.zeros(nsmooth)
+        misfit_sar     = np.zeros(nsmooth)
+        misfit_gps     = np.zeros(nsmooth)
+        smoothness     = np.zeros(nsmooth)
+        ruff           = np.zeros(nsmooth)
+        moment         = np.zeros((nsmooth,2))
+        ramp           = np.zeros((nsmooth, n_ramp))
         # ss_slip        = zeros((nsmooth, nf))
         # ss_sig_slip    = zeros((nsmooth, nf))
         # dip_slip       = zeros((nsmooth, nf))
@@ -191,14 +190,14 @@ class TriInversion(object):
                 WG_sar = WG_sar.reshape(-1, nf*3)
             G2I = np.vstack((WG, WG_sar, G_laps))
             Gramp = np.vstack([ block_diag(G_gps_ramp, G_sar_ramp),
-                               zeros((G_laps.shape[0], n_ramp)) ])
+                               np.zeros((G_laps.shape[0], n_ramp)) ])
             G2I = np.column_stack((G2I, Gramp))
     
             # invert the matrix G2I                    
             Ginv        = np.linalg.pinv(G2I)
             slip[i]     = Ginv.dot(d2I)[0:3*nf]
             cov_slip    = Ginv.dot(Ginv.T)[0:3*nf,0:3*nf]
-            sig_slip[i] = sqrt(diag(cov_slip))
+            sig_slip[i] = np.sqrt(np.diag(cov_slip))
 
             logging.info('Unconstrained linear least square finished.')
     

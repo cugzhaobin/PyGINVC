@@ -54,15 +54,17 @@ class BaseGreen(object):
 
         if ext == 'h5':
             with h5py.File(greenfile, 'r') as h5:
-                self.G     = h5['G'][()]
-                self.G_sar = h5['G_sar'][()]
+                self.G          = h5['G'][()]
+                self.G_sar      = h5['G_sar'][()]
                 self.G_gps_ramp = h5['G_gps_ramp'][()]
                 self.G_sar_ramp = h5['G_sar_ramp'][()]
                 logging.info('Load Greens function from {}'.format(greenfile))
         elif ext == 'npy' or ext == 'npz':
-            dat    = np.load('greenfile')
-            self.G     = dat['G']
-            self.G_sar = dat['G_sar']
+            dat             = np.load('greenfile')
+            self.G          = dat['G']
+            self.G_sar      = dat['G_sar']
+            self.G_gps_ramp = dat['G_gps_ramp']
+            self.G_sar_ramp = dat['G_sar_ramp']
             logging.info('Load Greens function from {}'.format(greenfile))
             
         if 'gps_ramp' in dict_green.keys() or dict_green['gps_ramp']==False:
@@ -72,8 +74,7 @@ class BaseGreen(object):
 
 
     def SaveGreens(self, greenfile='green.h5'):
-        '''
-        '''
+        """Save Green's functions into hdf5 file"""
         if os.path.isfile('green.h5') == True:
             os.remove('green.h5')
         with h5py.File('green.h5', 'w') as h5:

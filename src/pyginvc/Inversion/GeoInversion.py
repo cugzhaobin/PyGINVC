@@ -7,8 +7,7 @@ import logging
 import numpy as np
 from scipy import optimize
 from scipy import linalg
-from numpy import array, genfromtxt, remainder, zeros
-from numpy import hstack, arange, sqrt, diag, sum
+
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -54,7 +53,6 @@ class GeoInversion(object):
         d_lev         = self.data.d_lev
         d_sar         = self.data.d_sar
         wgps          = self.dict_weight['wgps']
-        W             = wgps*self.data.W
         wsar          = self.dict_weight['wsar']
         G             = self.green.G
         G_sar         = self.green.G_sar
@@ -71,6 +69,7 @@ class GeoInversion(object):
         # set SAR weights in data object
         #self.data.set_wsar(wsar)
         n_sar = self.data.n_sar
+        W     = wgps*self.data.W
         WSAR  = np.zeros_like(self.data.W_sar)
         for i in range(len(n_sar)):
             idx0 = sum(n_sar[:i])
@@ -80,15 +79,15 @@ class GeoInversion(object):
 
         # count number of smoothing factors
         smo_fact_start, smo_fact_end,  smo_fact_step = smoothfactor
-        smo_facts      = arange(smo_fact_start, smo_fact_end, smo_fact_step)
+        smo_facts      = np.arange(smo_fact_start, smo_fact_end, smo_fact_step)
         nsmooth        = len(smo_facts) if len(smo_facts)>0 else 1
 
         # Data dimensions
         len_geod       = len(d_gps) + len(d_lev)
         len_all        = len_geod   + len(d_sar)
         nf             = self.flt.nf
-        d_lap          = zeros(3*nf)
-        D              = hstack((d_gps, d_lev))
+        d_lap          = np.zeros(3*nf)
+        D              = np.hstack((d_gps, d_lev))
     
         # get d2I and d2R
         # if len_geod > 0:
@@ -112,16 +111,16 @@ class GeoInversion(object):
         
         
         # init parameters
-        slip           = zeros((nsmooth, 3*nf))
-        sig_slip       = zeros((nsmooth, 3*nf))
+        slip           = np.zeros((nsmooth, 3*nf))
+        sig_slip       = np.zeros((nsmooth, 3*nf))
         # slipb          = zeros((nsmooth, 3*nf))
-        r              = zeros(len_all)
-        misfit         = zeros(nsmooth)
-        misfit_sar     = zeros(nsmooth)
-        misfit_gps     = zeros(nsmooth)
-        smoothness     = zeros(nsmooth)
-        ruff           = zeros(nsmooth)
-        moment         = zeros((nsmooth,2))
+        r              = np.zeros(len_all)
+        misfit         = np.zeros(nsmooth)
+        misfit_sar     = np.zeros(nsmooth)
+        misfit_gps     = np.zeros(nsmooth)
+        smoothness     = np.zeros(nsmooth)
+        ruff           = np.zeros(nsmooth)
+        moment         = np.zeros((nsmooth,2))
         # ss_slip        = zeros((nsmooth, nf))
         # ss_sig_slip    = zeros((nsmooth, nf))
         # ds_slip        = zeros((nsmooth, nf))
@@ -129,7 +128,7 @@ class GeoInversion(object):
         # openning       = zeros((nsmooth, nf))
         # op_sig_slip    = zeros((nsmooth, nf))
         #G2I            = zeros((len(D)+nf, nf))
-        ramp           = zeros((nsmooth, n_ramp))
+        ramp           = np.zeros((nsmooth, n_ramp))
         sar_switch     = 0
         
         # if len(d_sar) > 0:
@@ -185,14 +184,14 @@ class GeoInversion(object):
                 WG_sar = WG_sar.reshape(-1, nf*3)
             G2I = np.vstack((WG, WG_sar, G_laps))
             Gramp = np.vstack([ linalg.block_diag(G_gps_ramp, G_sar_ramp),
-                               zeros((G_laps.shape[0], n_ramp)) ])
+                               np.zeros((G_laps.shape[0], n_ramp)) ])
             G2I = np.column_stack((G2I, Gramp))
      
             # invert the matrix G2I                    
             Ginv        = np.linalg.pinv(G2I)
             slip[i]     = Ginv.dot(d2I)[0:3*nf]
             cov_slip    = Ginv.dot(Ginv.T)[0:3*nf,0:3*nf]
-            sig_slip[i] = sqrt(diag(cov_slip))
+            sig_slip[i] = np.sqrt(np.diag(cov_slip))
 
             logging.info('Unconstrained linear least square finished.')
     
@@ -329,12 +328,12 @@ class GeoInversion(object):
             
         # Initialize variables
         # ss_range_c = 0
-        ss_range   = array([0,0])
+        ss_range   = np.array([0,0])
         # ds_range_c = 0
-        ds_range   = array([0,0])
+        ds_range   = np.array([0,0])
         # op_range_c = 0
-        op_range   = array([0,0])
-        surf_slip  = zeros(3*nsegs)
+        op_range   = np.array([0,0])
+        surf_slip  = np.zeros(3*nsegs)
         surf_slip_c  = 0
         s_ss_range   = 0
         # s_ss_range_c = 0
@@ -342,13 +341,13 @@ class GeoInversion(object):
         # s_ds_range_c = 0
         # s_op_range_c = 0
         s_op_range   = 0
-        bot_slip     = zeros(3*nsegs)
+        bot_slip     = np.zeros(3*nsegs)
         bot_slip_c   = 0
         # b_ss_range_c = 0 
         # b_ds_range_c = 0 
         # b_op_range_c = 0
-        bu           = zeros(nelems)
-        bl           = zeros(nelems)
+        bu           = np.zeros(nelems)
+        bl           = np.zeros(nelems)
         slip_lb      = ''
         slip_ub      = ''
                 
@@ -488,8 +487,8 @@ class GeoInversion(object):
         # if slip bound files are exist, then overwrite the bound array bu and bl
         if slip_lb != '' and slip_ub != '':
             nelems       = 3*nsegs*ndeps
-            bl[0:nelems] = genfromtxt(slip_lb, usecols = [7,8,9]).reshape(nelems)
-            bu[0:nelems] = genfromtxt(slip_ub, usecols = [7,8,9]).reshape(nelems)
+            bl[0:nelems] = np.genfromtxt(slip_lb, usecols = [7,8,9]).reshape(nelems)
+            bu[0:nelems] = np.genfromtxt(slip_ub, usecols = [7,8,9]).reshape(nelems)
             logging.info('The lower bound and upper bound of slip are assgined from {} and {}.'.format(slip_lb, slip_ub))
     
         return bu, bl 

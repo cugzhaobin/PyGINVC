@@ -145,6 +145,9 @@ class Output(object):
         logging.info('Fault slip distribution is ouput in geography system.')
     
     def write_rectangle_slip(self, filename, value):
+        """
+        Write slip distribution in GMT format
+        """
         nf       = self.flt.nf
         all_data = []
         
@@ -169,6 +172,9 @@ class Output(object):
         np.savetxt(filename, all_data, fmt='%s', header=header)
     
     def write_triangle_slip(self, filename, value):
+        """
+        Write slip distribution in GMT format
+        """
         nf = self.flt.nf
         v  = self.flt.vertex_llh[:,[1,0,2]]
         e  = self.flt.element-1
@@ -481,6 +487,7 @@ class Output(object):
 
     
     def Write_GPS_Data(self, dhat, r):
+        """Write observed, modeled and residual GPS data"""
         len_gps = len(self.data.d_gps)
         nsta    = len(self.data.llh_gps)
         if nsta == 0:
@@ -539,6 +546,7 @@ class Output(object):
         logging.info('Modeled and residual GPS points are output.')
 
     def Write_LEV_Data(self, dhat, r):
+        """Write modeled and residual leveling data"""
         len_gps = len(self.data.d_gps)
         len_lev = len(self.data.d_lev)
         len_geod= len_gps+len_lev
@@ -558,6 +566,7 @@ class Output(object):
             logging.info('%d modeled and residual LEV points are output.' %(len_lev))
     
     def Write_SAR_Data(self, dhat, r):
+        """Write modeled and residual SAR data"""
         len_gps = len(self.data.d_gps)
         len_lev = len(self.data.d_lev)
         len_sar = len(self.data.d_sar)
@@ -572,6 +581,8 @@ class Output(object):
         d_sar      = self.data.d_sar
         n_sar      = self.data.n_sar
         r_sar      = r[len_geod:len_all]/np.diag(wsar)
+        
+        # For the case there are multiple sar files
         for i in range(len(n_sar)):
             idx0 = sum(n_sar[:i])
             idx1 = sum(n_sar[:i+1])
