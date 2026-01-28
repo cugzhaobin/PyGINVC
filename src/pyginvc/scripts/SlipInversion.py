@@ -11,7 +11,7 @@
 import yaml, os, sys
 import logging, argparse
 from pyginvc.GeoData.GeoData import GeoData
-from pyginvc.Geometry.Fault import Fault
+from pyginvc.Geometry.Patch import Fault
 from pyginvc.Greens.Okada import Okada
 from pyginvc.Laplacian.RectPlaneLap import RectPlaneLap
 from pyginvc.Inversion.GeoInversion import GeoInversion
@@ -39,7 +39,7 @@ class SlipInversion:
             self.cfg = cfg
             if args.sarfile is not None: self.cfg['dict_data']['sarfile']   = args.sarfile
             if args.gpsfile is not None: self.cfg['dict_data']['gpsfile']   = args.gpsfile
-#           if args.lapmethod is not None: self.cfg['dict_data']['lapmethod'] = args.lapmethod
+            if args.lapmethod is not None: self.cfg['dict_data']['lapmethod'] = args.lapmethod
             if args.outpath is not None: self.cfg['dict_data']['outpath']   = args.outpath
         return
 
@@ -130,6 +130,7 @@ def main():
     parser.add_argument('--sarfile', type=str, default=None, required=False, help='')
     parser.add_argument('--gpsfile', type=str, default=None, required=False, help='')
     parser.add_argument('--outpath', type=str, default=None, required=False, help='')
+    parser.add_argument('--lapmethod', type=str, default=None, required=False, help='1/4')
     
     args    = parser.parse_args()
     slipinv = SlipInversion(args)

@@ -186,7 +186,7 @@ class GeoInversion(object):
             Gramp = np.vstack([ linalg.block_diag(G_gps_ramp, G_sar_ramp),
                                np.zeros((G_laps.shape[0], n_ramp)) ])
             G2I = np.column_stack((G2I, Gramp))
-     
+            
             # invert the matrix G2I                    
             Ginv        = np.linalg.pinv(G2I)
             slip[i]     = Ginv.dot(d2I)[0:3*nf]
@@ -394,7 +394,7 @@ class GeoInversion(object):
             
         for i in range(nelems):
             # for strike slip component
-            if remainder(i,3) == 0:
+            if np.remainder(i,3) == 0:
                 if i <= nsegs*3:
                     if surf_slip_c == 1:
                          bu[i] = surf_slip[i]+s_ss_range
@@ -422,7 +422,7 @@ class GeoInversion(object):
                      bl[i] = ss_range[0]
                 
             # for dip slip component
-            if remainder(i,3) == 1:
+            if np.remainder(i,3) == 1:
                  if i <= nsegs*3:
                      if surf_slip_c == 1:
                          bu[i] = surf_slip[i]+s_ds_range
@@ -449,7 +449,7 @@ class GeoInversion(object):
                      bu[i] = ds_range[1]
                      bl[i] = ds_range[0]           
             # openning component uses op_range, s_op_range, b_op_range   
-            if remainder(i,3) == 2:
+            if np.remainder(i,3) == 2:
                  if i <= nsegs*3:
                      if surf_slip_c == 1:
                          bu[i] = surf_slip[i]+s_op_range

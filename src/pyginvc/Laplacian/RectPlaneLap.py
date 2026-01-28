@@ -6,7 +6,7 @@ Created on Fri Apr 26 09:34:53 2019
 """
 import numpy as np
 import logging
-import h5py
+import h5py, sys
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -54,6 +54,10 @@ class RectPlaneLap(object):
     
         MOD by Zhao Bin, Jan 1, 2017. if bcs = []
         '''
+        
+        if nsegsa < 2 or ndepsa < 2:
+            logging.fatal("nsegs or ndeps should > 1. or use Tikhonov method.")
+            sys.exit()
         
         # init parameters
         G_lapn = np.array([])

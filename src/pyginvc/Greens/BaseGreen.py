@@ -129,21 +129,27 @@ class BaseGreen(object):
             G: array
 
         '''
-        G = np.ones((len(xy),3))
-        for i in range(len(xy)):
-            G[i,1] = xy[i,0]
-            G[i,2] = xy[i,1]
+        if len(xy)>0:
+            G = np.ones((len(xy),3))
+            for i in range(len(xy)):
+                G[i,1] = xy[i,0]
+                G[i,2] = xy[i,1]
+        else:
+            G = np.zeros(0)
         return G
             
     def MakeGGPSRamp(self, xy, dim):
-        G = np.ones((dim*len(xy), 3))
-        for i in range(len(xy)):
-            if dim == 2:
-                G[2*i+0] = np.array([1, 0, -xy[i,0]])
-                G[2*i+1] = np.array([0, 1,  xy[i,1]])
-            elif dim == 3:
-                G[3*i+0] = np.array([1, 0, -xy[i,0]])
-                G[3*i+1] = np.array([0, 1,  xy[i,1]])
+        if len(xy)>0:
+            G = np.ones((dim*len(xy), 3))
+            for i in range(len(xy)):
+                if dim == 2:
+                    G[2*i+0] = np.array([1, 0, -xy[i,0]])
+                    G[2*i+1] = np.array([0, 1,  xy[i,1]])
+                elif dim == 3:
+                    G[3*i+0] = np.array([1, 0, -xy[i,0]])
+                    G[3*i+1] = np.array([0, 1,  xy[i,1]])
+        else:
+            G = np.zeros(0)
         return G
     
     def _convert_to_local(self, llh, origin):

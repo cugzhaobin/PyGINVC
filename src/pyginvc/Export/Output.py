@@ -49,8 +49,7 @@ class Output(object):
         self.sol       = sol
         self.archdir   = archdir
         
-        if isinstance(flt, Fault):
-            self.flttype = 'rectangle'
+        self.flttype = 'rectangle'
         if isinstance(flt, Triangle):
             self.flttype = 'triangle'
 

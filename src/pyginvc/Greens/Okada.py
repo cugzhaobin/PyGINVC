@@ -109,13 +109,16 @@ class Okada(BaseGreen):
         else:
             self.G_gps_ramp = np.empty((self.G.shape[0],0))
         if 'sar_ramp' in dict_green.keys() and dict_green['sar_ramp']:
-            sizes = data.n_sar
-            G_sar_ramp = []
-            for i in range(len(sizes)):
-                start = sum(sizes[:i])
-                end   = sum(sizes[:i+1])
-                G_sar_ramp.append(self.MakeGSARRamp(xy_sar[start:end]))
-            self.G_sar_ramp = linalg.block_diag(*G_sar_ramp)
+            if len(G_sar) > 0:
+                sizes = data.n_sar
+                G_sar_ramp = []
+                for i in range(len(sizes)):
+                    start = sum(sizes[:i])
+                    end   = sum(sizes[:i+1])
+                    G_sar_ramp.append(self.MakeGSARRamp(xy_sar[start:end]))
+                    self.G_sar_ramp = linalg.block_diag(*G_sar_ramp)
+            else:
+                self.G_sar_ramp = np.zeros((0,0))
         else:
             self.G_sar_ramp = np.empty((self.G_sar.shape[0],0))
 
