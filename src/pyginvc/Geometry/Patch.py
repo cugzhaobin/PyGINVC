@@ -82,7 +82,7 @@ class Fault(object):
         isfile = os.path.isfile(self.faultfile)
         if isfile is False:
            logging.fatal('fault file does not exist! Please input another file!')
-           sys.exit()
+           return np.empty((0,10))
     
         # load the data
         geom = np.genfromtxt(self.faultfile, comments='#')

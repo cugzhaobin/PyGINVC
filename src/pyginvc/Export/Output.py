@@ -517,16 +517,27 @@ class Output(object):
                 ('res_up', 0, obs[:,2]-mod[:,2], 0, 0)
                 ]
         for name, east, north, sig_e, sig_n in output_cfg:
-            df = pd.DataFrame({
-                'lon': llh[:,1],
-                'lat': llh[:,0],
-                'east': east,
-                'north': north,
-                'sig_e': sig_e,
-                'sig_n': sig_n,
-                'corr': 0,
-                'station': station
-                })
+            if len(station)>0:
+                df = pd.DataFrame({
+                    'lon': llh[:,1],
+                    'lat': llh[:,0],
+                    'east': east,
+                    'north': north,
+                    'sig_e': sig_e,
+                    'sig_n': sig_n,
+                    'corr': 0,
+                    'station': station
+                    })
+            else:
+                df = pd.DataFrame({
+                    'lon': llh[:,1],
+                    'lat': llh[:,0],
+                    'east': east,
+                    'north': north,
+                    'sig_e': sig_e,
+                    'sig_n': sig_n,
+                    'corr': 0
+                    })
             
             fname = f'gps_{name}.gmtvec'
             df.to_csv(fname, sep='\t', index=False, float_format='%10.4f', header=False)
