@@ -23,7 +23,7 @@ class BaseGreen(object):
             data       = an instance of class GeoData
             dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
         '''
-
+        self.data = data
         greenfile = dict_green['greenfile']
         beta      = 0.0
         if os.path.isfile(greenfile) == True:
@@ -36,7 +36,6 @@ class BaseGreen(object):
             beta = dict_green['rake_beta']
             self.RotateGreens(beta)
 
-        
         self.rake_beta = beta
         self.modulus   = float(dict_green['modulus'])
 
@@ -138,16 +137,27 @@ class BaseGreen(object):
             G = np.zeros(0)
         return G
             
-    def MakeGGPSRamp(self, xy, dim):
+    def MakeGGPSRamp(self, xy, dim, method=2):
         if len(xy)>0:
             G = np.ones((dim*len(xy), 3))
-            for i in range(len(xy)):
-                if dim == 2:
-                    G[2*i+0] = np.array([1, 0, -xy[i,0]])
-                    G[2*i+1] = np.array([0, 1,  xy[i,1]])
-                elif dim == 3:
-                    G[3*i+0] = np.array([1, 0, -xy[i,0]])
-                    G[3*i+1] = np.array([0, 1,  xy[i,1]])
+            if method == 1:
+                for i in range(len(xy)):
+                    if dim == 2:
+                        G[2*i+0] = np.array([1, 0, -xy[i,0]])
+                        G[2*i+1] = np.array([0, 1,  xy[i,1]])
+                    elif dim == 3:
+                        G[3*i+0] = np.array([1, 0, -xy[i,0]])
+                        G[3*i+1] = np.array([0, 1,  xy[i,1]])
+            elif method == 2:
+                R    = 6370
+                rllh = np.deg2rad(self.data.llh_gps)
+                for i in range(len(xy)):
+                    sin_lat = np.sin(rllh[i,0])
+                    cos_lat = np.cos(rllh[i,0])
+                    sin_lon = np.sin(rllh[i,1])
+                    cos_lon = np.cos(rllh[i,1])
+                    G[dim*i+0] = R * np.array([-sin_lat*cos_lon, sin_lon*sin_lat, cos_lat])
+                    G[dim*i+1] = R * np.array([sin_lat, -cos_lon, 0])
         else:
             G = np.zeros(0)
         return G

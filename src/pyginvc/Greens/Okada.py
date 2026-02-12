@@ -105,7 +105,7 @@ class Okada(BaseGreen):
         self.G_sar = G_sar
         
         if 'gps_ramp' in dict_green.keys() and dict_green['gps_ramp']:
-            self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim)
+            self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim, method=1)
         else:
             self.G_gps_ramp = np.empty((self.G.shape[0],0))
         if 'sar_ramp' in dict_green.keys() and dict_green['sar_ramp']:

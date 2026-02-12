@@ -277,7 +277,7 @@ class Fault(object):
             ss    =-self.dis_geom_grid[i,7]
             ds    = self.dis_geom_grid[i,8]
             op    = self.dis_geom_grid[i,9]
-            ts    = sqrt(ss**2 + ds**2)
+            ts    = sqrt(ss**2 + ds**2 + op**2)
             rake  = 0.0 if ts == 0 else rad2deg(np.arctan2(ds, ss))
 
             length   = self.dis_geom_grid[i,0]
