@@ -80,7 +80,7 @@ def plot_gps(ax, gpsfile, scale=1000):
     """Plot aftershocks if the file exists."""
     if os.path.exists(gpsfile):
         gps = np.genfromtxt(gpsfile)
-        ax.quiver(gps[:,0], gps[:,1], np.zeros(len(gps)), gps[:,2], gps[:,3], np.zeros(len(gps)))
+        ax.quiver(gps[:,0], gps[:,1], np.zeros(len(gps)), gps[:,2], gps[:,3], np.zeros(len(gps)), length=0.3)
     else:
         print('Input gps file does not exist!')
 
@@ -95,6 +95,7 @@ def main():
     parser.add_argument('--sarfile', type=str, required=False, default="", help='InSAR file')
     parser.add_argument('--gpsfile', type=str, required=False, default="", help='GPS file')
     parser.add_argument('--savefig', type=bool, required=False, default=False, help='Y/N save figure')
+    parser.add_argument('--scale', type=float, required=False, default=1000, help='scale for vector')
     args = parser.parse_args()
 
     faultfile = args.faultfile
@@ -104,6 +105,7 @@ def main():
     showtext  = args.showindex
     azim      = args.azimuth
     elev      = args.elevation
+    scale     = args.scale
 
     # Load fault data
     felem = load_fault_data(faultfile)

@@ -138,13 +138,14 @@ class BaseGreen(object):
         return G
             
     def MakeGGPSRamp(self, xy, dim, method=2):
+        """xy [east, north]"""
         if len(xy)>0:
-            G = np.ones((dim*len(xy), 3))
+            G = np.zeros((dim*len(xy), 3))
             if method == 1:
                 for i in range(len(xy)):
                     if dim == 2:
-                        G[2*i+0] = np.array([1, 0, -xy[i,0]])
-                        G[2*i+1] = np.array([0, 1,  xy[i,1]])
+                        G[2*i+0] = np.array([1, 0, -xy[i,0]]) #East
+                        G[2*i+1] = np.array([0, 1,  xy[i,1]]) #North
                     elif dim == 3:
                         G[3*i+0] = np.array([1, 0, -xy[i,0]])
                         G[3*i+1] = np.array([0, 1,  xy[i,1]])
@@ -156,8 +157,8 @@ class BaseGreen(object):
                     cos_lat = np.cos(rllh[i,0])
                     sin_lon = np.sin(rllh[i,1])
                     cos_lon = np.cos(rllh[i,1])
-                    G[dim*i+0] = R * np.array([-sin_lat*cos_lon, sin_lon*sin_lat, cos_lat])
-                    G[dim*i+1] = R * np.array([sin_lat, -cos_lon, 0])
+                    G[dim*i+0] = R * np.array([-sin_lat*cos_lon, -sin_lat*sin_lon, cos_lat])
+                    G[dim*i+1] = R * np.array([sin_lon, -cos_lon, 0])
         else:
             G = np.zeros(0)
         return G
