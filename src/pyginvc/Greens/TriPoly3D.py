@@ -2,10 +2,10 @@
 # Written by Zhao Bin, Aug. 26, 2020
 import os, logging
 import numpy as np
-from scipy import linalg
-from pyginvc.Greens import poly3d
-from pyginvc.Greens.BaseGreen import BaseGreen
 import pyginvc.libs.geotools as gt
+from scipy import linalg
+from pyginvc.libs import poly3d
+from pyginvc.Greens.BaseGreen import BaseGreen
 
 logging.basicConfig(
                     level=logging.INFO,

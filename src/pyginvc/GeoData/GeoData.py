@@ -166,3 +166,26 @@ class GeoData(GPSData, LEVData, SARData):
             h5['ndim']    = self.ndim
             h5['unit']    = self.unit
         return
+
+    def sort_by_block(self, idx_gps, idx_sar):
+        '''
+        Sort GPS data by block ID
+
+        Input:
+            block_id = array of block IDs for each GPS point
+        Output:
+            idx      = array of indices that sort the GPS data by block ID
+        '''
+        if len(self.llh_gps) > 0 or len(idx_gps) == len(self.llh_gps):
+            self.llh_gps     = self.llh_gps[idx_gps]
+            self.d_gps       = self.d_gps.reshape(-1, self.ndim)[idx_gps].flatten()
+            self.cov_gps     = np.diag(np.diag(self.cov_gps).reshape(-1, self.ndim)[idx_gps].flatten())
+            self.Icov_gps    = np.linalg.inv(self.cov_gps)
+            self.W_gps       = np.linalg.cholesky(self.Icov_gps)
+            if len(self.station_gps) == len(idx_gps):
+                self.station_gps = self.station_gps[idx_gps]
+        
+        if len(self.llh_sar) > 0 or len(idx_sar) == len(self.llh_sar):
+            self.llh_sar     = self.llh_sar[idx_sar]
+            self.unit        = self.unit[idx_sar]
+            self.d_sar       = self.d_sar[idx_sar]

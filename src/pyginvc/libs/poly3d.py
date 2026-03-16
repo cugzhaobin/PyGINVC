@@ -570,19 +570,19 @@ def read_disp_surface(outfile):
     element_disp: list of displacement
     '''
 
+    disp         = []
+    found_header = False
     with open(outfile, 'r') as fid:
-        content = fid.readlines()
-    bdisp = False
-    disp  = []
-    for i in range(len(content)):
-        if content[i].find('X1       X2       X3         U1         U2         U3')>0:
-            bdisp = True
-        if content[i].find('-') >0 and bdisp:
-            if len(content[i].split())==6:
-                dat  = [float(j) for j in content[i].split()]
-                disp.append(dat)
+        for line in fid:
+            if not found_header:
+                if 'X1       X2       X3         U1         U2         U3' in line:
+                    found_header =True
+            elif line.startwith('-----'):
+                continue
             else:
-                bdisp = False
+                if len(content[i].split())==6:
+                    dat  = [float(j) for j in content[i].split()]
+                    disp.append(dat)
     disp = np.array(disp)
     return disp
 
