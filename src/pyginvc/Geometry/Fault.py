@@ -633,7 +633,7 @@ class Fault(object):
             fid.write("# origin: {:10.4f} {:10.4f} ".format(self.origin[0], self.origin[1]))
           
             fmt = "%4d %10.3f %10.3e %10.3e %10.3e %10.3e %10.3e %10.3f %10.3f %10.3f"
-            np.save(fid, edcmp_flt, fmt=fmt)
+            np.savetxt(fid, edcmp_flt, fmt=fmt)
         return edcmp_flt
 
     def FaultGeom2VISCO1D(self):

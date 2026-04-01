@@ -199,11 +199,10 @@ class GPSData(object):
             usig[usig == 0] = 1.0
         
             # make cov
-            cov = zeros([3*nsta, 3*nsta])
+            cov = np.zeros([3*nsta, 3*nsta])
         
             for i in range(nsta):
                 k = 3*i
-        
                 cov[k,k]     = esig[i]**2
                 cov[k+1,k+1] = nsig[i]**2
                 cov[k+2,k+2] = usig[i]**2
@@ -211,9 +210,9 @@ class GPSData(object):
                 cov[k,k+2] = 0.0
                 cov[k+1,k] = 0.0
                 cov[k+2,k] = 0.0
-                logging.info(f'{nsta} GPS stations are read in GMT 3D format.')
-                # return the result
-                return vel, llh, cov, station
+            # return the result
+            logging.info(f'{nsta} GPS stations are read in GMT 3D format.')
+            return vel, llh, cov, station
         except Exception as e:
             logging.error(f'Error reading GMT 3D data: {str(e)}')
             # print processing status

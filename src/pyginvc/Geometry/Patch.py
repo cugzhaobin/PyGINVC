@@ -566,7 +566,7 @@ class Fault(object):
     
         # open output file
         with open('edcmp.fault', 'w') as fid:
-            fid.write("# origin: {:10.4f} {:10.4f} ".format(self.origin[0], self.origin[1]))
+            fid.write("# origin: {:10.4f} {:10.4f} \n".format(self.origin[0], self.origin[1]))
             for i, row in felem.iterrows():
                 strike = row['strike'] % 360
                 dip    = row['dip'] % 360

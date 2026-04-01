@@ -88,6 +88,8 @@ class GeoData(GPSData, LEVData, SARData):
         # 
         gps_data, sar_data, lev_data = [], [], []
         for gpsfile in gpsfiles:
+            print(gpsfile, gfiletype)
+            gps_data.append(GPSData(gpsfile, gfiletype))
             try:
                 gps_data.append(GPSData(gpsfile, gfiletype))
             except Exception as e:
