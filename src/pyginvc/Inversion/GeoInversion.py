@@ -174,7 +174,9 @@ class GeoInversion(object):
 
             slip[i] = x[:3*nf]
             ramp[i] = x[3*nf:]
-            dhat    = G2R @ x
+            
+            newG    = np.column_stack([np.vstack(G, G_sar), linalg.block_diag(*ramp_blocks2)])
+            dhat    = newG @ x
 
             if len_geod > 0:
                 r[0:len_geod] = d2R[0:len_geod] - W @ dhat[0:len_geod]

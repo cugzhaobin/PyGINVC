@@ -80,7 +80,7 @@ class Okada(BaseGreen):
     
             # print the status
             if verbose:
-                logging.info('Green function for %d GPS stations are computed.' %(len(xy_gps)))
+                logging.info('Green\'s functions for %d GPS stations are computed.' %(len(xy_gps)))
         G = G_dis
             
         # if we have level data
@@ -90,7 +90,7 @@ class Okada(BaseGreen):
             G = np.hstack((G, G_dis))
     
             if verbose:
-                logging.info('Green function for %d Level stations are computed.' %(len(xy_lev)))
+                logging.info('Green\'s functions for %d Level stations are computed.' %(len(xy_lev)))
         
         # if we have SAR data
         G_sar   = np.empty((0,0))
@@ -99,7 +99,7 @@ class Okada(BaseGreen):
     
             # print the status
             if verbose:
-                logging.info('Green function for %d InSAR points are computed.' %(len(xy_sar)))
+                logging.info('Green\'s functions for %d InSAR points are computed.' %(len(xy_sar)))
         
         self.G     = G
         self.G_sar = G_sar
@@ -107,7 +107,7 @@ class Okada(BaseGreen):
         if 'gps_ramp' in dict_green.keys() and dict_green['gps_ramp']:
             self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim, method=1)
         else:
-            self.G_gps_ramp = np.empty((self.G.shape[0],0))
+            self.G_gps_ramp = np.empty((len(self.data.d_gps),0))
         if 'sar_ramp' in dict_green.keys() and dict_green['sar_ramp']:
             if len(G_sar) > 0:
                 sizes = data.n_sar

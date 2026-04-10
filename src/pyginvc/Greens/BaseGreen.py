@@ -66,10 +66,11 @@ class BaseGreen(object):
             self.G_sar_ramp = dat['G_sar_ramp']
             logging.info('Load Greens function from {}'.format(greenfile))
             
+        len_gps = len(self.data.d_gps)
         if 'gps_ramp' in dict_green.keys() or dict_green['gps_ramp']==False:
-            self.G_gps_ramp = np.empty((self.G.shape[1],0))
+            self.G_gps_ramp = np.empty((len_gps,0))
         if 'sar_ramp' in dict_green.keys() or dict_green['sar_ramp']==False:
-            self.G_sar_ramp = np.empty((self.G_sar.shape[1],0))
+            self.G_sar_ramp = np.empty((len_gps,0))
 
 
     def SaveGreens(self, greenfile='green.h5'):
@@ -142,13 +143,18 @@ class BaseGreen(object):
         if len(xy)>0:
             G = np.zeros((dim*len(xy), 3))
             if method == 1:
+                G = np.zeros((dim*len(xy), 2))
                 for i in range(len(xy)):
                     if dim == 2:
-                        G[2*i+0] = np.array([1, 0, -xy[i,0]]) #East
-                        G[2*i+1] = np.array([0, 1,  xy[i,1]]) #North
+#                       G[2*i+0] = np.array([1, 0, -xy[i,0]]) #East
+#                       G[2*i+1] = np.array([0, 1,  xy[i,1]]) #North
+                        G[2*i+0] = np.array([1, 0]) #East
+                        G[2*i+1] = np.array([0, 1]) #North
                     elif dim == 3:
-                        G[3*i+0] = np.array([1, 0, -xy[i,0]])
-                        G[3*i+1] = np.array([0, 1,  xy[i,1]])
+                        G[2*i+0] = np.array([1, 0]) #East
+                        G[2*i+1] = np.array([0, 1]) #North
+#                       G[3*i+0] = np.array([1, 0, -xy[i,0]])
+#                       G[3*i+1] = np.array([0, 1,  xy[i,1]])
             elif method == 2:
                 R    = 6370
                 rllh = np.deg2rad(self.data.llh_gps)

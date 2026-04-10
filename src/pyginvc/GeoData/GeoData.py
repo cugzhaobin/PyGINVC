@@ -88,8 +88,6 @@ class GeoData(GPSData, LEVData, SARData):
         # 
         gps_data, sar_data, lev_data = [], [], []
         for gpsfile in gpsfiles:
-            print(gpsfile, gfiletype)
-            gps_data.append(GPSData(gpsfile, gfiletype))
             try:
                 gps_data.append(GPSData(gpsfile, gfiletype))
             except Exception as e:
@@ -169,25 +167,43 @@ class GeoData(GPSData, LEVData, SARData):
             h5['unit']    = self.unit
         return
 
-    def sort_by_block(self, idx_gps, idx_sar):
-        '''
-        Sort GPS data by block ID
+    def process_data(self, gps_blk_idx, sar_blk_idx):
+        if len(gps_blk_idx) == 0:
+            logging.info('Block index for GPS is null')
+            return
+        else:
+            obs, llh, cov = [], [], []
+            for i in np.unique(gps_blk_idx):
+                if i < 0: continue
+                idx = np.where(gps_blk_idx==i)[0]
+                obs.append(self.d_gps.reshape(-1,2)[idx])
+                llh.append(self.llh_gps[idx])
+                cov.append(np.diag(np.diag(self.cov_gps).reshape(-1,2)[idx].flatten()))
 
-        Input:
-            block_id = array of block IDs for each GPS point
-        Output:
-            idx      = array of indices that sort the GPS data by block ID
-        '''
-        if len(self.llh_gps) > 0 or len(idx_gps) == len(self.llh_gps):
-            self.llh_gps     = self.llh_gps[idx_gps]
-            self.d_gps       = self.d_gps.reshape(-1, self.ndim)[idx_gps].flatten()
-            self.cov_gps     = np.diag(np.diag(self.cov_gps).reshape(-1, self.ndim)[idx_gps].flatten())
-            self.Icov_gps    = np.linalg.inv(self.cov_gps)
-            self.W_gps       = np.linalg.cholesky(self.Icov_gps)
-            if len(self.station_gps) == len(idx_gps):
-                self.station_gps = self.station_gps[idx_gps]
-        
-        if len(self.llh_sar) > 0 or len(idx_sar) == len(self.llh_sar):
-            self.llh_sar     = self.llh_sar[idx_sar]
-            self.unit        = self.unit[idx_sar]
-            self.d_sar       = self.d_sar[idx_sar]
+            llh         = np.vstack(llh)
+            obs         = np.vstack(obs)
+            cov         = linalg.block_diag(*cov)
+            Icov_gps    = np.linalg.inv(cov)
+            W_gps       = np.linalg.cholesky(Icov_gps)
+    
+            self.llh_gps  = np.vstack(llh)
+            self.d_gps    = obs.flatten()
+            self.cov_gps  = cov
+            self.Icov_gps = Icov_gps
+            self.W        = W_gps
+
+        if len(sar_blk_idx) == 0:
+            logging.info('Block index for SAR is null')
+            return
+        else:
+            llh, los, unit = [], [], []
+            for i in np.unique(sar_blk_idx):
+                if i < 0: continue
+                idx = np.where(sar_blk_idx==i)[0]
+                llh.append(self.llh_sar[idx])
+                los.append(self.los[idx])
+                unit.append(self.unit[idx])
+
+            self.llh_sar = np.vstack(llh)
+            self.d_sar   = np.vstack(los)
+            self.unit    = np.vstack(unit)
