@@ -250,14 +250,3 @@ class GPSData(object):
             logging.error(f'Error reading IOS3D data: {str(e)}')
             raise ValueError(f'Invalid IOS3D data format in {filename}') from e
             
-    def plotGPSVector(self, showfig=False):
-        import matplotlib.pyplot as plt
-        
-        if self.nsta == 0:
-            return
-        
-        dispE = self.d_gps[0::self.ndim]
-        dispN = self.d_gps[1::self.ndim]
-        plt.quiver(self.llh_gps[:,0], self.llh_gps[:,1], dispE, dispN)
-        if showfig:
-            plt.show()

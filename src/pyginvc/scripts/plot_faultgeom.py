@@ -50,7 +50,7 @@ def main():
 
     flt   = Fault(faultfile, 1, 1, False)
     flt.load_fault()
-    flt.plot_faultgeom(afsfile=afsfile, gpsfile=gpsfile, sarfile=sarfile, scale=scale, azimuth=azim, elevation=elev)
+    flt.plot_faultgeom(afsfile=afsfile, gpsfile=gpsfile, sarfile=sarfile, azimuth=azim, elevation=elev)
 
 
 if __name__ == '__main__':

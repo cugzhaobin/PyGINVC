@@ -46,7 +46,7 @@ class BlockBackslipInversion(BaseInversion):
 
         return G2I, G2R, G
 
-    def inversion(self, nblock, G_gps_block):
+    def run_inversion(self, nblock, G_gps_block):
 
         d2I, d2R = self.assemble_data_vector(self.fault.nf)
         
@@ -128,7 +128,14 @@ class BlockBackslipInversion(BaseInversion):
             ruff[i]       = np.sum(lap_slip**2)
             shearmodulus  = self.green.modulus
             [Mo, Mw]      = self.fault.moment(slip[i].reshape(-1,3), shear_modulus=shearmodulus)
-            moment[i]     = np.array([Mo, Mw]) 
+            moment[i]     = np.array([Mo, Mw])
+            gps_mod_slip      = G2R[:len_gps, 3*nblock:] @ slip[i]
+            gps_mod_rotation  = G2R[:len_gps, :3*nblock] @ euler[i]
+            if len_sar>0:
+                sar_mod_slip      = G2R[len_geod:, 3*nblock] @ slip[i]
+                sar_mod_rotation  = G2R[len_geod:,:3*nblock] @ x[:3*nblock]
+            else:
+                sar_mod_slip, sar_mod_rotation = np.array([]), np.array([])
         
         self.ruff       = ruff
         self.misfit_gps = misfit_gps
@@ -143,3 +150,7 @@ class BlockBackslipInversion(BaseInversion):
         self.WSAR       = WSAR
         self.euler      = euler
         self.x          = x
+        self.gps_mod_slip     = gps_mod_slip
+        self.gps_mod_rotation = gps_mod_rotation
+        self.sar_mod_slip     = sar_mod_slip
+        self.sar_mod_rotation = sar_mod_rotation

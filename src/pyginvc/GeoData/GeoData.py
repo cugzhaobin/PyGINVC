@@ -211,3 +211,9 @@ class GeoData:
             return np.sqrt(self.cov_gps).reshape(-1, self.ndim)
         elif self.cov_gps.ndim == 2:
             return np.sqrt(np.diag(self.cov_gps)).reshape(-1, self.ndim)
+
+    def plot_gps_vector(self, ax, value, color='black', scale=200):
+        
+        if self.llh_gps.size == 0:
+            return
+        ax.quiver(self.llh_gps[:,1], self.llh_gps[:,0], value[0::2], value[1::2], color=color, scale=scale)
