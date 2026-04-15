@@ -3,7 +3,7 @@
 # By Zhao Bin, Institute of Seismology, CEA. @ UC Berkeley Ocb 4, 2016 
 # Rewritten by Zhao Bin, April 6, 2021
 
-from pyginvc.Geometry.Fault import Fault
+from pyginvc.Geometry.Patch import Fault
 import argparse
 
 def main():
@@ -13,6 +13,7 @@ def main():
 
     fltfile = args.faultfile
     flt     = Fault(fltfile, 1, 1, False)
+    flt.load_fault()
     flt.FaultGeom2VISCO1D()
 
 if __name__ == '__main__':

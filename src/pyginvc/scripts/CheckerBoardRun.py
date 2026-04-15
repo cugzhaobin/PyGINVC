@@ -10,7 +10,7 @@
 # import models
 from pyginvc.Forward.Forward import Forward
 from pyginvc.Forward import Checkerboard as chb
-from pyginvc.Geometry.Fault import Fault
+from pyginvc.Geometry.Patch import Fault
 from pyginvc.GeoData.GeoData import GeoData
 from pyginvc.Greens.Okada import Okada
 from pyginvc.Export.Output import Output
@@ -78,6 +78,7 @@ def main():
             nsegs,
             ndeps,
             False)
+    flt.load_fault()
 
     green= Okada(flt, data, dict_green)
 

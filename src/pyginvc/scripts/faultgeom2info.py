@@ -3,7 +3,7 @@
 # By Zhao Bin, Institute of Seismology, CEA. @ UC Berkeley Ocb 4, 2016 
 # Rewritten by Zhao Bin, April 6, 2021
 
-from pyginvc.Geometry.Fault import Fault
+from pyginvc.Geometry.Patch import Fault
 import argparse
 
 def main():
@@ -19,7 +19,10 @@ def main():
     display = args.display
     origin  = args.origin
     flt     = Fault(fltfile, 1, 1, False, origin=origin)
+    flt.load_fault()
+    felem   = flt.FaultGeom2AllVertex()
     if display == 'complex':
+        """
         fmt = 33*"%10.2f"
         print(" Leng, wid, dip, strk, ss, ds, op, ts, rake,\
                 top_left_llh, top_right_llh,\
@@ -37,8 +40,11 @@ def main():
                     flt.top_right_neu[i,0], flt.top_right_neu[i,1], flt.top_right_neu[i,2],
                     flt.bot_right_neu[i,0], flt.bot_right_neu[i,1], flt.bot_right_neu[i,2],
                     flt.bot_left_neu[i,0], flt.bot_left_neu[i,1], flt.bot_left_neu[i,2],
-                    ))
+                    ))"""
+        with felem.option_context('display.max_rows', None, 'display.max_coulmns', None):
+            print(felem)
     elif display == 'simple' or display == 'SIMPLE':
+        """
         fmt = 12*"%10.3f"
         print(' Leng, wid, dip, strk, ss, ds, op, ts, rake, lon_mid, lat_mid, dep_mid')
         for i in range(len(flt.length)):
@@ -47,7 +53,11 @@ def main():
                     (flt.top_left_llh[i,0]+flt.top_right_llh[i,0])/2,
                     (flt.top_left_llh[i,1]+flt.top_right_llh[i,1])/2,
                     (flt.top_left_llh[i,2]+flt.top_right_llh[i,2])/2,
-                    ))
+                    ))"""
+        selected_df = felem(["length", "width", "strike", "dip", "rake", "strike_slip", "dip_slip", "tensile_slip", "total_slip", 
+        "lt_lat", "lt_lon", "lt_dep", "rt_lat","rt_lon","rt_dep"])
+        with selected_df.option_context('display.max_rows', None, 'display.max_coulmns', None):
+            print(selected_df)
 
 if __name__ == '__main__':
     main()

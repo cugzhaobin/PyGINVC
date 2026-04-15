@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-from numpy import zeros
 import numpy as np
 import logging
 from scipy import linalg
@@ -7,23 +6,14 @@ from pyginvc.GeoData.GPSData import GPSData
 from pyginvc.GeoData.SARData import SARData
 from pyginvc.GeoData.LEVData import LEVData
 logging.basicConfig(
-                    level=logging.INFO,
-                    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
-                    datefmt="%d-%m-%Y %H:%M:%S")
+    level=logging.INFO,
+    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
+    datefmt="%d-%m-%Y %H:%M:%S")
 
-class GeoData(GPSData, LEVData, SARData):
+class GeoData:
     '''
     GeoData representing Geodetic Data used for slip inversion.
     '''
-    llh_gps = []
-    llh_lev = []
-    llh_sar = []
-    d_gps   = []
-    d_lev   = []
-    d_sar   = []
-    unit    = []
-    W       = []
-    ndim    = 3
 
     def __init__(self, gpsfiles, sarfiles, levfiles, gfiletype):
         '''
@@ -38,6 +28,11 @@ class GeoData(GPSData, LEVData, SARData):
             levfile     = Level file name
             gfiletype   = GPS file type, GMT2D or GMT3D or IOS3D
         '''
+        self.gpsfiles = gpsfiles
+        self.sarfiles = sarfiles
+        self.levfiles = levfiles
+        self.gfiletype= gfiletype
+
         self.llh_gps = np.array([])
         self.llh_sar = np.array([])
         self.llh_lev = np.array([])
@@ -45,8 +40,22 @@ class GeoData(GPSData, LEVData, SARData):
         self.d_sar   = np.array([])
         self.d_lev   = np.array([])
         self.unit    = np.array([])
-        self.LoadGeoData(gpsfiles, sarfiles, levfiles, gfiletype)
-        return
+       # self.W       = np.empty(0)
+       # self.W_gps   = np.empty(0)
+       # self.W_sar   = np.empty(0)
+       # self.W_lev   = np.empty(0)
+
+        self.cov_gps = np.empty(0)
+        self.cov_sar = np.empty(0)
+        self.ndim    = 2
+        self.n_gps   = 0
+        self.n_sar   = 0
+        self.station_gps = np.empty(0, dtype=str)
+    
+    def load_data(self):
+        self.load_geo_data()
+        logging.info("All geodetic data loaded")  
+    
 
     def LoadAllData(self, gpsfile, sarfile, levfile, gfiletype):
         '''
@@ -62,7 +71,7 @@ class GeoData(GPSData, LEVData, SARData):
         '''
 
         # GPS Data
-        self.LoadGPSData(gpsfile, gfiletype)        
+        self.LoadGPSData(gpsfile, gfiletype)
 
         # LEV Data
         self.LoadLEVData(levfile)
@@ -72,29 +81,33 @@ class GeoData(GPSData, LEVData, SARData):
        
         # concatenate data, covariance, and weight matricies
         # only combine GPS and level data, excluding InSAR data
-        up     = np.hstack((self.W_gps, zeros((self.d_gps.size, self.d_lev.size))))
-        dw     = np.hstack((zeros((self.d_lev.size, self.d_gps.size)), self.W_lev))
-        self.W = np.vstack((up, dw))
+        #up     = np.hstack((self.W_gps, zeros((self.d_gps.size, self.d_lev.size))))
+        #dw     = np.hstack((zeros((self.d_lev.size, self.d_gps.size)), self.W_lev))
+        #self.W = np.vstack((up, dw))
         
         # print processing status
         logging.info('Finished load geodetic data for inversion.')
 
-    def LoadGeoData(self, gpsfiles, sarfiles, levfiles, gfiletype):
+    def load_geo_data(self):
         
-        gpsfiles = self._to_list(gpsfiles)
-        sarfiles = self._to_list(sarfiles)
-        levfiles = self._to_list(levfiles)
+        gpsfiles = self._to_list(self.gpsfiles)
+        sarfiles = self._to_list(self.sarfiles)
+        levfiles = self._to_list(self.levfiles)
+        gfiletype = self.gfiletype
 
-        # 
         gps_data, sar_data, lev_data = [], [], []
         for gpsfile in gpsfiles:
             try:
-                gps_data.append(GPSData(gpsfile, gfiletype))
+                gps = GPSData(gpsfile, gfiletype)
+                gps.load()
+                gps_data.append(gps)
             except Exception as e:
                 logging.info(f"Loading GPS file {gpsfile}: {e}")
         for sarfile in sarfiles:
             try:
-                sar_data.append(SARData(sarfile))
+                sar = SARData(sarfile)
+                sar.load()
+                sar_data.append(sar)
             except Exception as e:
                 logging.info(f"Loading SAR file {sarfile}: {e}")
         for levfile in levfiles:
@@ -104,37 +117,24 @@ class GeoData(GPSData, LEVData, SARData):
                 logging.info(f"Loading LEV file {levfile}: {e}")
 
         # Now combine the data together
-        llh_gps = [item.llh_gps for item in gps_data]
-        llh_sar = [item.llh_sar for item in sar_data]
-        llh_lev = [item.llh_lev for item in lev_data]
-        d_gps   = [item.d_gps for item in gps_data]
-        d_sar   = [item.d_sar for item in sar_data]
-        d_lev   = [item.d_lev for item in lev_data]
-        unit    = [item.unit  for item in sar_data]
-        w_gps   = [item.W_gps for item in gps_data]
-        w_sar   = [item.W_sar for item in sar_data]
-        w_lev   = [item.W_lev for item in lev_data]
-        cov_gps = [item.cov_gps for item in gps_data]
-        n_gps   = [len(item.llh_gps) for item in gps_data]
-        n_sar   = [len(item.llh_sar) for item in sar_data]
-        sta_gps = [item.station_gps for item in gps_data]
-        w       = w_gps+w_lev
+        if gps_data:
+            self.llh_gps = np.vstack([item.llh_gps for item in gps_data])
+            self.d_gps   = np.hstack([item.d_gps for item in gps_data])
+            self.cov_gps = np.hstack([item.cov_gps for item in gps_data])
+            self.n_gps   = np.array([len(item.llh_gps) for item in gps_data])
+            self.station_gps = np.hstack([item.station_gps for item in gps_data])
 
-        self.llh_gps = np.vstack(llh_gps)
-        self.llh_sar = np.vstack(llh_sar)
-        self.llh_lev = np.vstack(llh_lev)
-        self.d_gps   = np.hstack(d_gps)
-        self.cov_gps = linalg.block_diag(*cov_gps)
-        self.d_sar   = np.hstack(d_sar)
-        self.d_lev   = np.hstack(d_lev)
-        self.unit    = np.vstack(unit)
-        self.W       = linalg.block_diag(*w)
-        self.W_gps   = w_gps
-        self.W_sar   = linalg.block_diag(*w_sar)
-        self.n_gps   = np.array(n_gps)
-        self.n_sar   = np.array(n_sar)
-        self.station_gps = np.hstack(sta_gps)
+        if sar_data:
+            self.llh_sar = np.vstack([d.llh_sar for d in sar_data])
+            self.d_sar   = np.hstack([d.d_sar for d in sar_data])
+            self.unit    = np.vstack([d.unit  for d in sar_data])
+            self.cov_sar = np.hstack([d.cov_sar for d in sar_data])
+            self.n_sar   = np.array([len(d.llh_sar) for d in sar_data])
 
+        if lev_data:
+            self.llh_lev = np.vstack([d.llh_lev for d in lev_data])
+            self.d_lev   = np.hstack([d.d_lev for d in lev_data])
+        
         if gfiletype[-2:] == '2D':
             self.ndim = 2
         if gfiletype[-2:] == '3D':
@@ -144,6 +144,8 @@ class GeoData(GPSData, LEVData, SARData):
         logging.info('Finished load geodetic data for inversion.')
         
     def _to_list(self, file_input):
+        if file_input is None:
+            return []
         if isinstance(file_input, str):
             return [file_input]
         elif isinstance(file_input, list):
@@ -158,13 +160,15 @@ class GeoData(GPSData, LEVData, SARData):
             h5['d_gps'] = self.d_gps
             h5['d_lev'] = self.d_lev
             h5['d_sar'] = self.d_sar
-            h5['W']     = self.W
+            #h5['W']     = self.W
             h5['llh_gps'] = self.llh_gps
             h5['llh_sar'] = self.llh_sar
             h5['llh_lev'] = self.llh_lev
-            h5['W_gps']   = self.W_gps
+            #h5['W_gps']   = self.W_gps
             h5['ndim']    = self.ndim
             h5['unit']    = self.unit
+            h5['cov_gps'] = self.cov_gps
+            h5['cov_sar'] = self.cov_sar
         return
 
     def process_data(self, gps_blk_idx, sar_blk_idx):
@@ -175,35 +179,35 @@ class GeoData(GPSData, LEVData, SARData):
             obs, llh, cov = [], [], []
             for i in np.unique(gps_blk_idx):
                 if i < 0: continue
-                idx = np.where(gps_blk_idx==i)[0]
-                obs.append(self.d_gps.reshape(-1,2)[idx])
+                idx = (gps_blk_idx==i)
+                obs.append(self.d_gps.reshape(-1,self.ndim)[idx])
                 llh.append(self.llh_gps[idx])
-                cov.append(np.diag(np.diag(self.cov_gps).reshape(-1,2)[idx].flatten()))
+                cov.append(self.cov_gps.reshape(-1,self.ndim)[idx])
 
-            llh         = np.vstack(llh)
-            obs         = np.vstack(obs)
-            cov         = linalg.block_diag(*cov)
-            Icov_gps    = np.linalg.inv(cov)
-            W_gps       = np.linalg.cholesky(Icov_gps)
-    
             self.llh_gps  = np.vstack(llh)
-            self.d_gps    = obs.flatten()
-            self.cov_gps  = cov
-            self.Icov_gps = Icov_gps
-            self.W        = W_gps
+            self.d_gps    = np.vstack(obs).flatten()
+            self.cov_gps  = np.vstack(cov).flatten()
 
         if len(sar_blk_idx) == 0:
             logging.info('Block index for SAR is null')
             return
         else:
-            llh, los, unit = [], [], []
+            llh, los, unit, cov = [], [], [], []
             for i in np.unique(sar_blk_idx):
                 if i < 0: continue
-                idx = np.where(sar_blk_idx==i)[0]
+                idx = (sar_blk_idx==i)
                 llh.append(self.llh_sar[idx])
                 los.append(self.los[idx])
                 unit.append(self.unit[idx])
+                cov.append(self.cov_sar[idx][:,idx])
 
             self.llh_sar = np.vstack(llh)
             self.d_sar   = np.vstack(los)
             self.unit    = np.vstack(unit)
+            self.cov_sar = linalg.block_diag(*cov)
+    
+    def get_sigma(self):
+        if self.cov_gps.ndim == 1:
+            return np.sqrt(self.cov_gps).reshape(-1, self.ndim)
+        elif self.cov_gps.ndim == 2:
+            return np.sqrt(np.diag(self.cov_gps)).reshape(-1, self.ndim)

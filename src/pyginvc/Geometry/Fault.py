@@ -836,12 +836,13 @@ class Fault(object):
                                                      self.bot_left_llh[i,2])) 
         return
 
-    def Moment(self, shearmodulus=3e10):
+    def moment(self, slip, shear_modulus=3e10):
         '''
         Calculate seismic moment
         '''
         area     = self.dis_geom_grid[:,0] * self.dis_geom_grid[:,1] * 1e6
-        Mo       = area * self.ts * shearmodulus
+        tol_slip = np.linalg.norm(slip, axis=1)
+        Mo       = area * tol_slip * shear_modulus
         Mo_total = np.sum(Mo)/1000
         Mw_total = 2.0/3.0*np.log10(Mo_total) - 6.067
 

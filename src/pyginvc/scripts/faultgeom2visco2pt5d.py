@@ -3,7 +3,7 @@
 # By Zhao Bin, Institute of Seismology, CEA. @ UC Berkeley Ocb 4, 2016 
 # Rewritten by Zhao Bin, April 6, 2021
 
-from pyginvc.Geometry.Fault import Fault
+from pyginvc.Geometry.Patch import Fault
 import argparse
 import numpy as np
 
@@ -15,6 +15,7 @@ def main():
     fltfile = args.faultfile
     dat     = np.genfromtxt(fltfile)
     flt     = Fault(fltfile, len(dat), 1, False)
+    flt.load_fault()
     flt.FaultGeom2VISCO2PT5D()
 
 if __name__ == '__main__':

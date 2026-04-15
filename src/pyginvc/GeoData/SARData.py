@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import numpy as np
-import os, sys, logging
+import os, logging
+from scipy.spatial.distance import cdist
 from pyginvc.libs import geotools as gt
 
 logging.basicConfig(
@@ -26,21 +27,29 @@ class SARData(object):
             sigma       = 
             lamda       =
         '''
-        self.llh_sar = np.empty((0,2))
-        self.d_sar   = np.array([])
-        self.unit    = np.array((0,3))
-        self.cov_sar = np.array([])
+        self.sarfile = sarfile
+        self.sigma   = sigma
+        self.lamda   = lamda
 
-        self.LoadSARData(sarfile, scale=1.0)
-        self.MakeCVM(sigma, lamda)
-        return
+        self.llh_sar = np.empty((0,2))
+        self.d_sar   = np.empty(0)
+        self.unit    = np.empty((0,3))
+        self.cov_sar = np.empty(0)
+
+        #self.LoadSARData(sarfile, scale=1.0)
+        #self.MakeCVM(sigma, lamda)
+        #return
+
+    def load(self):
+        self.load_sar_data()
+        self.build_spatial_cov()
 
     def set_wsar(self, wsar):
         '''
         '''
         self.wsar = wsar
 
-    def LoadSARData(self, sarfile, scale=1.0):
+    def load_sar_data(self, scale=1.0):
         '''
         Load InSAR data from input files
 
@@ -54,18 +63,19 @@ class SARData(object):
         #
         # Read SAR Data
         #
-        if sarfile != '':
-            [llh_sar, d_sar, unit] = self.GetSARdata(sarfile)
-            self.llh_sar  = llh_sar
-            self.d_sar    = d_sar.flatten()*scale
-            self.unit     = unit
+        filename = self.sarfile
+        if not os.path.exists(filename):
+            logging.fatal(f'SAR file {filename} does not exit.')
+            return
+        [llh_sar, d_sar, unit] = self.GetSARdata(filename)
+        self.llh_sar  = llh_sar
+        self.d_sar    = d_sar.flatten()*scale
+        self.unit     = unit
     
-        	# print processing status
+        # print processing status
         logging.info('{} InSAR points are loaded.'.format(len(self.llh_sar)))
-        
-        return 
 
-    def MakeCVM(self, sigma, lamda):
+    def build_spatial_cov(self):
         '''
         Construct variance-covariance matrix
         Written by Zhao Bin, Jul. 31, 2019.
@@ -76,27 +86,17 @@ class SARData(object):
         Output:
             cov_sar = covariance of InSAR data
         '''
-
-        nlos      = len(self.llh_sar)
-        if sigma == None or sigma == '':
-            self.cov_sar = np.eye(nlos)
+        sigma  = self.sigma
+        lamda  = self.lamda
+        nlos   = len(self.llh_sar)
+        if sigma is None or lamda is None:
+            self.cov_sar = np.ones(nlos)
         else:
-            if lamda == None or sigma == '':
-                self.cov_sar = np.eye(nlos)*sigma**2
-            else:
-                distances = np.zeros((nlos, nlos))
-                for i in range(nlos):
-                    for j in range(i+1,nlos):
-                        en             = gt.llh2localxy(self.llh_sar[j,[1,0]], self.llh_sar[i,[1,0]])
-                        distances[i,j] = np.sqrt(sum(en**2))
-                        distances[j,i] = distances[i,j]
-                self.cov_sar   = sigma*(np.exp(-(distances**2)/(2*lamda**2)))
-
-        Icov_sar         = np.linalg.inv(self.cov_sar)
-        self.W_sar       = np.linalg.cholesky(Icov_sar)
-
-        return
-
+            origin  = np.mean(self.llh_sar, axis=0)
+            localxy = gt.local2llh(self.llh_sar, origin)
+            dist    = cdist(localxy, localxy, metric="euclidean")
+            cov_sar = sigma**2 * np.exp(-dist**2/(2*lamda**2))
+            self.cov_sar = cov_sar
     
     @staticmethod
     def GetSARdata(filename):
@@ -112,13 +112,7 @@ class SARData(object):
             ran       = vector of rnage change
             unit      = unit vector
             cov_sar   = covariance matrix of LOS
-        '''
-
-        # check the file is exit
-        if os.path.isfile(filename) is False:
-            logging.debug('InSAR file is not exist! Please edit YAML file!')
-            sys.exit()
-    
+        '''    
         # load the data
         data = np.genfromtxt(filename, usecols=[0,1,2,3,4,5], comments='#')  
     

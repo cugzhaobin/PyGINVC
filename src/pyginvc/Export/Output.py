@@ -5,15 +5,13 @@ import logging, h5py
 import os, time, glob
 from pandas import pandas as pd
 from numpy import column_stack, hstack, vstack, transpose
-#from pyginvc.Geometry.Fault import Fault
-from pyginvc.Geometry.Patch import Fault
 from pyginvc.Geometry.Triangle import Triangle
-from pyginvc.Forward.TriForward import TriForward
+from pyginvc.Forward.Forward import Forward
 
 logging.basicConfig(
-                    level=logging.INFO,
-                    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
-                    datefmt="%d-%m-%Y %H:%M:%S")
+    level=logging.INFO,
+    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
+    datefmt="%d-%m-%Y %H:%M:%S")
 
 class Output(object):
     '''
@@ -53,8 +51,6 @@ class Output(object):
         if isinstance(flt, Triangle):
             self.flttype = 'triangle'
 
-        return
-
     def OutputSolution(self):
         '''
         Output solutions to hdf5 file and ascii files
@@ -68,17 +64,13 @@ class Output(object):
         # output hdf5 file
         with h5py.File('solutions.h5', 'w') as h5:
             # observation
-            grp = h5.create_group('obs')
-            grp.create_dataset('llh_gps', data = self.data.llh_gps, compression='gzip')
-            grp.create_dataset('llh_lev', data = self.data.llh_lev, compression='gzip')
-            grp.create_dataset('llh_sar', data = self.data.llh_sar, compression='gzip')
-            grp.create_dataset('unit',  data = self.data.unit,  compression='gzip')
-            grp.create_dataset('d_gps', data = self.data.d_gps, compression='gzip')
-            grp.create_dataset('d_lev', data = self.data.d_lev, compression='gzip')
-            grp.create_dataset('d_sar', data = self.data.d_sar, compression='gzip')
+            grp  = h5.create_group('obs')
+            keys = ['llh_gps', 'llh_lev', 'llh_sar', 'unit', 'd_gps', 'd_lev', 'd_sar']
+            for key in keys:
+                data = getattr(self.data, key)
+                grp.create_dataset(key, data=data, compression='gzip')
             grp['ndim']     = self.data.ndim
-
-#           grp['gps_site'] = self.data.station_gps
+            #grp['gps_site'] = self.data.station_gps
             
             # fault geometry
             grp = h5.create_group('flt')
@@ -95,14 +87,13 @@ class Output(object):
 
             # solution
             grp = h5.create_group('sol')
-            grp.create_dataset('slip', data = self.sol.slip, compression='gzip')
-#           grp.create_dataset('sig_slip', data = self.sol.sig_slip, compression='gzip')
-            grp.create_dataset('r', data = self.sol.r, compression='gzip')
-            grp.create_dataset('misfit', data = self.sol.misfit, compression='gzip')
-            grp.create_dataset('dhat', data = self.sol.dhat, compression='gzip')
+            keys = ['slip', 'r', 'misfit', 'dhat']
+            for key in keys:
+                data = getattr(self.sol, key)
+                grp.create_dataset(key, data=data, compression='gzip')
 
         # output ascii files
-        if isinstance(self.sol, TriForward):
+        if isinstance(self.sol, Forward):
             self.WriteData()
             self.archive_outfile()
         else:
@@ -111,8 +102,9 @@ class Output(object):
             self.WriteGMTSlip()
             self.WriteLCurve()
             self.WriteData()
+            self.output_ramp()
+            self.output_block()
             self.archive_outfile()
-        return
 
     def WriteGMTSlip(self):
         '''
@@ -140,7 +132,6 @@ class Output(object):
             self.write_triangle_slip('ds_slip_llh.gmtlin', slip[:,1])
             self.write_triangle_slip('ts_slip_llh.gmtlin', slip_mag)
             
-        # print the status
         logging.info('Fault slip distribution is ouput in geography system.')
     
     def write_rectangle_slip(self, filename, value):
@@ -169,6 +160,7 @@ class Output(object):
         
         header = '# Rectangle fault slip model'
         np.savetxt(filename, all_data, fmt='%s', header=header)
+        logging.info('Rectangular fault slip distribution is ouput in GMT format.')
     
     def write_triangle_slip(self, filename, value):
         """
@@ -177,16 +169,17 @@ class Output(object):
         nf = self.flt.nf
         v  = self.flt.vertex_llh[:,[1,0,2]]
         e  = self.flt.element-1
-        all_data = []
         
+        all_data = []
         for i in range(nf):
             all_data.append(f'>-Z{value[i]:.3f}')
             all_data.append(f'{v[e[i,0],0]:10.3f} {v[e[i,0],1]:10.3f} {v[e[i,0],2]:10.3f}')
             all_data.append(f'{v[e[i,1],0]:10.3f} {v[e[i,1],1]:10.3f} {v[e[i,1],2]:10.3f}')
             all_data.append(f'{v[e[i,2],0]:10.3f} {v[e[i,2],1]:10.3f} {v[e[i,2],2]:10.3f}')
         
-        header = '# Rectangle fault slip model'
+        header = '# Triangle fault slip model'
         np.savetxt(filename, all_data, fmt='%s', header=header)
+        logging.info('Triangular fault slip distribution is ouput in GMT format.')
  
     def WriteSlipModel(self):
         '''
@@ -241,7 +234,6 @@ class Output(object):
                     patchFaultGeom = np.column_stack((self.flt.element, new_slip, islip[:,2]))
                     fname = 'slipmodel_rot_%03d.tri' % (i + 1)
                     np.savetxt(fname, patchFaultGeom, fmt=fmt)
-        return
  
     def WriteSummary(self):
         '''
@@ -280,7 +272,6 @@ class Output(object):
                             %(self.sol.misfit_sar[i] / len(self.sol.data.d_sar)))
                 fid.write('Mo                               = %e\n' % self.sol.moment[(i, 0)])
                 fid.write('Mw                               = %4.2f\n' % self.sol.moment[(i, 1)])
-        return
  
     def WriteLCurve(self):
         """
@@ -303,7 +294,6 @@ class Output(object):
         header      = " Ruffness\t Misfit\t Smoothing_factor\t Moment"
         np.savetxt(fname, ruff_misfit, header=header, fmt='%10.2f\t%10.2f\t%10.4f\t%10.2e\t%10.2f')
         logging.info('Roughness vs misfit is printed into ruff_misfit.')
-        return
 	
         
     def WriteSurfSlip(self):
@@ -326,7 +316,6 @@ class Output(object):
         np.savetxt(fname, ss_surface_slip[0:3], fmt="%10.2f%10.2f%10.2f")
         fname = 'surface_slip_ds.txt'
         np.savetxt(fname, ds_surface_slip[0:3], fmt="%10.2f%10.2f%10.2f")
-        return
         
         
     def WriteData(self, dhat=None, r=None):
@@ -498,7 +487,7 @@ class Output(object):
         
         obs     = self.data.d_gps.reshape(nsta, ndim)
         mod     = dhat[0:len_gps].reshape(nsta, ndim)
-        sig     = np.sqrt(np.diag(self.data.cov_gps)).reshape(nsta,ndim)
+        sig     = self.data.get_sigma()
         
         output_cfg = []
         if ndim == 2:
@@ -611,6 +600,13 @@ class Output(object):
 
 	        # print the status
             logging.info('%d modeled and residual SAR points are output.' %(len_sar))
+
+    
+    def output_ramp(self):
+        pass
+
+    def output_block(self):
+        pass
             
     def archive_outfile(self):
         '''
@@ -644,5 +640,4 @@ class Output(object):
             os.popen('mv *.gmtlin '+dirname)
         if len(glob.glob('summary'))>0:
             os.popen('mv summary '+dirname)
-        time.sleep(10)
-        return
+        time.sleep(3)

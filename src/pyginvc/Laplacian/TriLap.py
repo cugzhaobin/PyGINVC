@@ -23,6 +23,10 @@ class TriLap(object):
         '''
         self.vertex  = vertex
         self.element = element
+        self.method  = method
+
+    def build_laps(self):
+        method = self.method
         if method == '1':
             self.tri_smooth()
             logging.info('smoothing method 1 is used.')
@@ -250,7 +254,6 @@ class TriLap(object):
                         Lap[3*i+2, 3*k[j]+2] = 2/Li/hh[j]
 
         self.G_lap = Lap
-        return
 
     def build_laplacian(self):
         '''
@@ -324,7 +327,6 @@ class TriLap(object):
             Lap[3*i+2,3*i+2] = sumP
         Lap = Lap/np.max(np.abs(np.diag(Lap)))
         self.G_lap = Lap
-        return
 
     def tikhonov(self):
         '''
@@ -332,11 +334,8 @@ class TriLap(object):
         '''
         tri   = self.element
         nelem = len(tri)
-        print('********************')
-        print(nelem)
         Lap   = np.eye(3*nelem)
         self.G_lap = Lap
-        return
     
     def DumpLap(self):
 

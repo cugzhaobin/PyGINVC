@@ -13,6 +13,8 @@ import yaml, os, sys
 import logging, argparse
 from pyginvc.Forward.TriForward import TriForward
 from pyginvc.Export.Output import Output
+from pyginvc.GeoData.GeoData import GeoData
+from pyginvc.Geometry.Triangle import Triangle
 
 
 class DispForward:
@@ -48,8 +50,40 @@ class DispForward:
         dict_weight= self.cfg['dict_weight']
         dict_export= self.cfg['dict_export']
 
+        #
+        # GeoData
+        #
+        gpsfile = dict_data['gpsfile']
+        sarfile = dict_data['sarfile']
+        levfile = dict_data['levfile']
+        gfiletype = dict_data['gfiletype']
+        data      = GeoData(gpsfile, sarfile, levfile, gfiletype)
+        data.load_data()
+    
+        #
+        # Fault
+        #
+        vertexfile  = dict_fault['vertexfile']
+        elementfile = dict_fault['elementfile']
+        fault       = Triangle(vertexfile, elementfile, origin=[])
+        fault.load_fault()
 
-        fwd = TriForward(dict_fault, dict_data, dict_green, dict_weight)
+        #
+        # GreenFunction
+        #
+        if dict_green['grnmethod'] == 'meade':
+            from pyginvc.Greens.Meade import Meade
+            green = Meade(self.flt, self.data, dict_green)
+        elif dict_green['grnmethod'] == 'nikkhoo':
+            from pyginvc.Greens.Nikkhoo import Nikkhoo
+            green = Nikkhoo(self.flt, self.data, dict_green)
+        elif dict_green['grnmethod'] == 'poly3d':
+            from pyginvc.Greens.TriPoly3D import TriPoly3D
+            green = TriPoly3D(self.flt, self.data, dict_green)
+        green.build_greens()
+
+        fwd = TriForward(fault, data, green)
+        fwd.run_forward()
 
         #
         # Output

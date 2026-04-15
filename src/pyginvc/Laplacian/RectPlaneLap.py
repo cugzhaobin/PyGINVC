@@ -29,15 +29,16 @@ class RectPlaneLap(object):
         self.nsegs = nsegs
         self.ndeps = ndeps
         self.bcs   = bcs
-        
-        if method == '1':
+        self.method= method
+    
+    def build_laps(self):
+        if self.method == '1':
             self.GenLap(self.nsegs, self.ndeps, self.bcs)
             logging.info('smoothing method 1 is used.')
-        elif method == '4':
+        elif self.method == '4':
             self.tikhonov()
             logging.info('smoothing method 4 is used.')
-        
-        return
+
 
     def GenLap(self, nsegsa, ndepsa, bcs, nplanes=1):
         '''

@@ -23,34 +23,30 @@ class BaseGreen(object):
             data       = an instance of class GeoData
             dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
         '''
-        self.data = data
-        greenfile = dict_green['greenfile']
-        beta      = 0.0
-        if os.path.isfile(greenfile) == True:
-            self.LoadGreens(greenfile, dict_green)
-        else:
-            self.GenGreens(flt, data, dict_green)
-            self.SaveGreens()
+        self.flt        = flt
+        self.data       = data
+        self.dict_green = dict_green
 
-        if 'rake_beta' in dict_green.keys():
-            beta = dict_green['rake_beta']
-            self.RotateGreens(beta)
+        self.G          = np.empty((0,0))
+        self.G_sar      = np.empty((0,0))
+        self.G_gps_ramp = np.empty((0,0))
+        self.G_sar_ramp = np.empty((0,0))
 
-        self.rake_beta = beta
-        self.modulus   = float(dict_green['modulus'])
+        self.modulus    = float(dict_green.get('modulus', 3e10))
+        self.greenfile  = dict_green['greenfile']
+        self.rake_beta  = dict_green.get('rake_beta', 0)
 
 
-    def LoadGreens(self, greenfile, dict_green):
+    def load_greens(self):
         '''
         Load Green's function.
-
-        Input:
-            grnfile    = file name of Green function
         '''
-        if os.path.isfile(greenfile) == False:
+        greenfile = self.greenfile
+        if not os.path.exists(greenfile):
             logging.info('Green file {} does not exist.'.format(greenfile))
-        ext = greenfile.split('.')[-1]
-
+            return False
+        
+        ext = greenfile.split('.')[-1].lower()
         if ext == 'h5':
             with h5py.File(greenfile, 'r') as h5:
                 self.G          = h5['G'][()]
@@ -66,25 +62,29 @@ class BaseGreen(object):
             self.G_sar_ramp = dat['G_sar_ramp']
             logging.info('Load Greens function from {}'.format(greenfile))
             
-        len_gps = len(self.data.d_gps)
-        if 'gps_ramp' in dict_green.keys() or dict_green['gps_ramp']==False:
+        gps_ramp = self.dict_green.get('gps_ramp', False)
+        sar_ramp = self.dict_green.get('sar_ramp', False)
+        
+        if not gps_ramp:
+            len_gps         = self.G.shape[0]
             self.G_gps_ramp = np.empty((len_gps,0))
-        if 'sar_ramp' in dict_green.keys() or dict_green['sar_ramp']==False:
-            self.G_sar_ramp = np.empty((len_gps,0))
+        if not sar_ramp:
+            len_sar         = self.G_sar.shape[0]
+            self.G_sar_ramp = np.empty((len_sar,0))
+        return True
 
-
-    def SaveGreens(self, greenfile='green.h5'):
+    def save_greens(self, greenfile='green.h5'):
         """Save Green's functions into hdf5 file"""
-        if os.path.isfile('green.h5') == True:
+        if os.path.exists(greenfile):
             os.remove('green.h5')
-        with h5py.File('green.h5', 'w') as h5:
+        with h5py.File(greenfile, 'w') as h5:
             h5.create_dataset('G', data = self.G, compression='gzip')
             h5.create_dataset('G_sar', data = self.G_sar, compression='gzip')
             h5.create_dataset('G_gps_ramp', data = self.G_gps_ramp, compression='gzip')
             h5.create_dataset('G_sar_ramp', data = self.G_sar_ramp, compression='gzip')
             logging.info('Green function is saved to green.h5')
 
-    def RotateGreens(self, beta, greenfile='green_rot.h5'):
+    def rotate_greens(self, greenfile='green_rot.h5'):
         '''
         Rotate the green function.
            ds'     ds      ss'
@@ -94,33 +94,36 @@ class BaseGreen(object):
         __________\|/____________ss
         '''
 
+        beta = self.rake_beta
         if beta == 0: return
         rbeta = np.deg2rad(beta)
         R     = np.array([[np.cos(rbeta), np.sin(rbeta)],
                          [-np.sin(rbeta), np.cos(rbeta)]])
 
-        Gnew    = np.empty(0)
-        Gsarnew = np.empty(0)
-        if len(self.G) > 0:
-            G    = self.G
-            Gnew = np.copy(G)
-            for i in range(int(G.shape[1]/3)):
-                Gnew[:, 3*i+0] = G[:,3*i+0]*R[0,0]+G[:,3*i+1]*R[0,1]
-                Gnew[:, 3*i+1] = G[:,3*i+0]*R[1,0]+G[:,3*i+1]*R[1,1]
-        if len(self.G_sar) > 0:
-            G_sar     = self.G_sar
-            Gsarnew   = np.copy(G_sar)
-            for i in range(int(G_sar.shape[1]/3)):
-                Gsarnew[:, 3*i+0] = G_sar[:,3*i+0]*R[0,0]+G_sar[:,3*i+1]*R[0,1]
-                Gsarnew[:, 3*i+1] = G_sar[:,3*i+0]*R[1,0]+G_sar[:,3*i+1]*R[1,1]
-        self.G     = Gnew
-        self.G_sar = Gsarnew
+        if self.G.size > 0:
+            Gnew  = self.G.copy()
+            
+            for i in range(self.flt.nf):
+                u = self.G[:, 3*i+0]
+                v = self.G[:, 3*i+1]
+                Gnew[:, 3*i+0] = u * R[0,0] + v * R[0,1]
+                Gnew[:, 3*i+1] = u * R[1,0] + v * R[1,1]
+            self.G = Gnew
+        if self.G_sar.size > 0:
+            Gnew      = self.G_sar.copy()
+            for i in range(self.flt.nf):
+                u = self.G_sar[:, 3*i+0]
+                v = self.G_sar[:, 3*i+1]
+                Gnew[:, 3*i+0] = u * R[0,0] + v * R[0,1]
+                Gnew[:, 3*i+1] = u * R[1,0] + v * R[1,1]
+            self.G_sar = Gnew
+        
         with h5py.File('./green_new.h5', 'w') as h5:
-            h5.create_dataset('G',     data=Gnew,    compression='gzip')
-            h5.create_dataset('G_sar', data=Gsarnew, compression='gzip')
+            h5.create_dataset('G',     data=self.G,     compression='gzip')
+            h5.create_dataset('G_sar', data=self.G_sar, compression='gzip')
         logging.info('Rotate Greens function finished.')
 
-    def MakeGSARRamp(self, xy):
+    def make_green_sar_ramp(self, xy):
         '''
         Rotation and translation InSAR Los data
         Input:
@@ -129,44 +132,33 @@ class BaseGreen(object):
             G: array
 
         '''
-        if len(xy)>0:
-            G = np.ones((len(xy),3))
-            for i in range(len(xy)):
-                G[i,1] = xy[i,0]
-                G[i,2] = xy[i,1]
-        else:
-            G = np.zeros(0)
+        G      = np.zeros((len(xy),3))
+        G[:,1] = xy[:,0]
+        G[:,2] = xy[:,1]
         return G
             
-    def MakeGGPSRamp(self, xy, dim, method=2):
+    def make_green_gps_ramp(self, xy, dim, method=2):
         """xy [east, north]"""
-        if len(xy)>0:
-            G = np.zeros((dim*len(xy), 3))
-            if method == 1:
-                G = np.zeros((dim*len(xy), 2))
-                for i in range(len(xy)):
-                    if dim == 2:
-#                       G[2*i+0] = np.array([1, 0, -xy[i,0]]) #East
-#                       G[2*i+1] = np.array([0, 1,  xy[i,1]]) #North
-                        G[2*i+0] = np.array([1, 0]) #East
-                        G[2*i+1] = np.array([0, 1]) #North
-                    elif dim == 3:
-                        G[2*i+0] = np.array([1, 0]) #East
-                        G[2*i+1] = np.array([0, 1]) #North
-#                       G[3*i+0] = np.array([1, 0, -xy[i,0]])
-#                       G[3*i+1] = np.array([0, 1,  xy[i,1]])
-            elif method == 2:
-                R    = 6370
-                rllh = np.deg2rad(self.data.llh_gps)
-                for i in range(len(xy)):
-                    sin_lat = np.sin(rllh[i,0])
-                    cos_lat = np.cos(rllh[i,0])
-                    sin_lon = np.sin(rllh[i,1])
-                    cos_lon = np.cos(rllh[i,1])
-                    G[dim*i+0] = R * np.array([-sin_lat*cos_lon, -sin_lat*sin_lon, cos_lat])
-                    G[dim*i+1] = R * np.array([sin_lon, -cos_lon, 0])
-        else:
-            G = np.zeros(0)
+
+        if len(xy) == 0:
+            return np.zeros((0,3))
+
+        G = np.zeros((dim*len(xy), 3))
+
+        if method == 1:
+            for i in range(len(xy)):
+                G[dim*i+0] = np.array([1, 0, -xy[i,0]]) #East
+                G[dim*i+1] = np.array([0, 1,  xy[i,1]]) #North
+        elif method == 2:
+            R    = 6370
+            rllh = np.deg2rad(self.data.llh_gps)
+            for i in range(len(xy)):
+                sin_lat = np.sin(rllh[i,0])
+                cos_lat = np.cos(rllh[i,0])
+                sin_lon = np.sin(rllh[i,1])
+                cos_lon = np.cos(rllh[i,1])
+                G[dim*i+0] = R * np.array([-sin_lat*cos_lon, -sin_lat*sin_lon, cos_lat])
+                G[dim*i+1] = R * np.array([sin_lon, -cos_lon, 0])
         return G
     
     def _convert_to_local(self, llh, origin):
@@ -174,4 +166,3 @@ class BaseGreen(object):
         for i in range(len(llh)):
             xy[i,:] = gt.llh2localxy(llh[i], origin)
         return xy
-        

@@ -12,6 +12,9 @@
 import yaml, os, sys
 import logging, argparse
 from pyginvc.Forward.Forward import Forward
+from pyginvc.GeoData.GeoData import GeoData
+from pyginvc.Geometry.Patch import Fault
+from pyginvc.Greens.Okada import Okada
 
 
 class DispForward:
@@ -45,10 +48,41 @@ class DispForward:
         dict_fault = self.cfg['dict_fault']
         dict_green = self.cfg['dict_green']
         dict_weight= self.cfg['dict_weight']
-        #dict_export= self.cfg['dict_export']
 
+        #
+        # GeoData
+        #
+        gpsfile = dict_data['gpsfile']
+        sarfile = dict_data['sarfile']
+        levfile = dict_data['levfile']
+        gfiletype = dict_data['gfiletype']
+        data = GeoData(gpsfile, sarfile, levfile, gfiletype)
+        data.load_data()
+        
+        #
+        # Fault
+        #
+        faultfile = dict_fault['faultfile']
+        nsegs     = dict_fault['nsegs']
+        ndeps     = dict_fault['ndeps']
+        doSubFault= dict_fault['doSubFault']
+        origin    = dict_fault['origin']
+        flt       = Fault(faultfile, nsegs, ndeps, doSubFault, origin=origin)
+        flt.load_fault()
 
-        Forward(dict_fault, dict_data, dict_green, dict_weight)
+        #
+        # GreenFunction
+        #
+        green = Okada(self.flt, self.data, dict_green)
+        green.build_greens()
+        
+        #
+        # Weight
+        self.wsar      = dict_weight['wsar']
+        self.data.wsar = dict_weight['wsar']
+
+        fwd = Forward(flt, data, green)
+        fwd.run_forward()
 
 def main():
     parser = argparse.ArgumentParser(description="Forward modelling of surface displacements from rectangular dislocation model.")

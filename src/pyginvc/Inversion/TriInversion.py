@@ -5,8 +5,10 @@
 
 import numpy as np
 import logging
+from scipy import linalg
 from scipy.linalg import block_diag
 from scipy import optimize
+from pyginvc.Inversion.BaseInversion import BaseInversion
 
 logging.basicConfig(
                     level=logging.INFO,
@@ -14,7 +16,7 @@ logging.basicConfig(
                     datefmt="%d-%M-%Y %H:%M:%S")
 
 
-class TriInversion(object):
+class TriInversion(BaseInversion):
     '''
     GeoInversion represents a class of slip inversion using geodetic data
     '''
@@ -38,12 +40,118 @@ class TriInversion(object):
         self.lap         = lap
         self.dict_weight = dict_weight
         self.dict_bound  = dict_bound
-       
-        self.inversion()
-        return
- 
+
+    def run_inversion_clean(self):
+        """Invert for slip distribution"""
+
+        # unpack data
+        d_gps         = self.data.d_gps
+        d_lev         = self.data.d_lev
+        d_sar         = self.data.d_sar
+        G_lap         = self.lap.G_lap
+        dict_bound    = self.dict_bound
+
+        nf            = self.flt.nf
+
+        d2I, d2R      = self.assemble_data_vector(nf)
+
+        # data weight
+        W, WSAR       = self.get_weight()
+        
+        # dimensions
+        len_geod       = len(d_gps) + len(d_lev)
+        len_sar        = len(d_sar)
+        len_all        = len_geod + len_sar
+        n_ramp         = self.green.G_gps_ramp.shape[1]+self.green.G_sar_ramp.shape[1]
+
+        # smoothing factors
+        smo_facts      = self.get_smoothing_factors()
+        nsmooth        = len(smo_facts)
+
+        # init parameters
+        slip           = np.zeros((nsmooth, 3*nf))
+        sig_slip       = np.zeros((nsmooth, 3*nf))
+        r              = np.zeros(len_all)
+        misfit         = np.zeros(nsmooth)
+        misfit_sar     = np.zeros(nsmooth)
+        misfit_gps     = np.zeros(nsmooth)
+        smoothness     = np.zeros(nsmooth)
+        ruff           = np.zeros(nsmooth)
+        moment         = np.zeros((nsmooth,2))
+        ramp           = np.zeros((nsmooth, n_ramp))
+        sar_switch     = 0
+
+        if dict_bound['bound_switch']:
+            bu, bl = self.set_bounds(nf, sar_switch, **dict_bound)
+
+            if n_ramp>0:
+                bl = np.hstack([bl, np.full(n_ramp, -np.inf)])
+                bu = np.hstack([bu, np.full(n_ramp,  np.inf)])
+
+            logging.info('Boundaries for constrained linear is constructed.')
+
+        # inversion loop
+        shearmodulus = self.green.modulus
+
+        for i, smo_fact in enumerate(smo_facts):
+            logging.info(f'Inversion {i+1} | smoothing factor = {smo_fact}')
             
-    def inversion(self):
+            G2I, G2R = self.assemble_design_matrix(smo_fact)
+            # if constrained linear least square method is used
+            if dict_bound['bound_switch']:
+                res     = optimize.lsq_linear(G2I, d2I, (bl, bu), method='bvls', lsmr_tol='auto')
+                x       = res.x
+                logging.info('Constrained linear least square finished.')
+            else:
+                x, *_   = np.linalg.lstsq(G2I, d2I, rcond=None)
+                logging.info('Unconstrained linear least square finished.')
+
+            slip[i] = x[:3*nf]
+            ramp[i] = x[3*nf:]
+            
+            dhat    = G2R @ x
+
+            if len_geod > 0:
+                r[0:len_geod] = d2R[0:len_geod] - W @ dhat[0:len_geod]
+                r_gps         = r[0:len_geod]
+                misfit_gps[i] = r_gps.dot(r_gps)
+                logging.info('GPS Weighted Residual Sum of Squares (WRSS) %10.3f' %(misfit_gps[i]))
+                logging.info('GPS: WRSS/(N) %f' %(misfit_gps[i]/len(d_gps)))
+
+            if len_sar > 0:
+                r[len_geod:]  = d2R[len_geod:] - WSAR @ dhat[len_geod:]
+                r_sar         = r[len_geod:]
+                misfit_sar[i] = r_sar.dot(r_sar)
+                logging.info('SAR Weighted Residual Sum of Squares (WRSS) %10.3f' %(misfit_sar[i]))
+                logging.info('SAR: WRSS/(N) %f' %(misfit_sar[i]/len_sar))
+
+            misfit[i]     = r.dot(r)
+            smoothness[i] = sum( (smo_fact*slip[i].dot(G_lap)) * (smo_fact*slip[i].dot(G_lap)) )
+            ruff[i]       = sum( (slip[i].dot(G_lap)) * (slip[i].dot(G_lap)) )
+
+            # compute the moment
+            Mo, Mw     = self.flt.moment(slip[i].reshape(-1,3), shear_modulus=shearmodulus)
+            moment[i]  = np.array([Mo, Mw])
+
+            # print the status
+            logging.info('Geodetic Moment Magnitude M0 = %E' %(Mo))
+            logging.info('Geodetic Moment Magnitude Mw = %f' %(Mw))
+
+        self.ruff       = ruff
+        self.misfit_gps = misfit_gps
+        self.misfit_sar = misfit_sar
+        self.misfit     = misfit
+        self.slip       = slip
+        self.sig_slip   = sig_slip
+        self.r          = r
+        self.dhat       = dhat
+        self.moment     = moment
+        self.smo_facts  = smo_facts
+        self.smoothness = smoothness
+        self.WSAR       = WSAR
+        self.ramp       = ramp
+            
+    def run_inversion(self):
         '''
         Invert for slip model
         Mod by Zhao Bin, Mar 14, 2020. Rescale W with wgps
@@ -53,7 +161,6 @@ class TriInversion(object):
         d_lev         = self.data.d_lev
         d_sar         = self.data.d_sar
         wgps          = self.dict_weight['wgps']
-        W             = wgps*self.data.W
         wsar          = self.dict_weight['wsar']
         G             = self.green.G
         G_sar         = self.green.G_sar
@@ -63,15 +170,15 @@ class TriInversion(object):
         smoothfactor  = self.dict_weight['smoothfactor']
         dict_bound    = self.dict_bound
         n_ramp        = G_gps_ramp.shape[1]+G_sar_ramp.shape[1]
-        # self.data.set_wsar(wsar)
 
-        n_sar = self.data.n_sar
-        WSAR  = np.zeros_like(self.data.W_sar)
-        assert len(n_sar) == len(wsar), "Number of wsar should be the same as sar data"
-        for i in range(len(n_sar)):
-            idx0 = sum(n_sar[:i])
-            idx1 = sum(n_sar[:i+1])
-            WSAR[idx0:idx1,idx0:idx1] = wsar[i]*self.data.W_sar[idx0:idx1,idx0:idx1]
+        W, WSAR       = self.get_weight()
+#       n_sar = self.data.n_sar
+#       WSAR  = np.zeros_like(self.data.W_sar)
+#       assert len(n_sar) == len(wsar), "Number of wsar should be the same as sar data"
+#       for i in range(len(n_sar)):
+#           idx0 = sum(n_sar[:i])
+#           idx1 = sum(n_sar[:i+1])
+#           WSAR[idx0:idx1,idx0:idx1] = wsar[i]*self.data.W_sar[idx0:idx1,idx0:idx1]
     
         len_geod       = len(d_gps) + len(d_lev)
         len_all        = len_geod   + len(d_sar)
@@ -145,7 +252,7 @@ class TriInversion(object):
         #         G_sar[:,-3:] = 0.0
     
         if dict_bound['bound_switch']:
-            [bu, bl] = self.set_bounds(len(self.flt.element), sar_switch, **dict_bound)
+            [bu, bl] = self.set_slip_bounds(len(self.flt.element), sar_switch, **dict_bound)
             if n_ramp>0:
                 bl = np.hstack([bl, np.full(n_ramp, -np.inf)])
                 bu = np.hstack([bu, np.full(n_ramp,  np.inf)])
@@ -157,7 +264,7 @@ class TriInversion(object):
         for i, smo_fact in enumerate(smo_facts):
             
             # print the status
-            logging.info('Inverting for No. %d with smooth factor %f' %(i+1, smo_fact))
+            logging.info('Inverting for No. %d with smoothing factor %f' %(i+1, smo_fact))
             
             # scale the G_lap
             G_laps     = smo_fact*G_lap
@@ -191,7 +298,7 @@ class TriInversion(object):
             G2I = np.vstack((WG, WG_sar, G_laps))
             Gramp = np.vstack([ block_diag(G_gps_ramp, G_sar_ramp),
                                np.zeros((G_laps.shape[0], n_ramp)) ])
-            G2I = np.column_stack((G2I, Gramp))
+#           G2I = np.column_stack((G2I, Gramp))
     
             # invert the matrix G2I                    
             Ginv        = np.linalg.pinv(G2I)
@@ -209,19 +316,19 @@ class TriInversion(object):
     
                 logging.info('Constrained linear least square finished.')
     
-#             if len(d_sar) > 0:
-#                 if len(G) == 0:
-#                     dhat = G_sar.dot(slip[scount,:])
-#                 else:
-# #                   dhat = vstack((hstack((G, zeros((len_geod,3)))), G_sar)).dot(slip[scount,:])
-#                     dhat = vstack((G, G_sar)).dot(slip[scount,:])
+            if len(d_sar) > 0:
+                if len(G) == 0:
+                    dhat = G_sar.dot(slip[i,:])
+                else:
+                    dhat = np.vstack((np.hstack((G, np.zeros((len_geod,3)))), G_sar)).dot(slip[i,:])
+                    dhat = np.vstack((G, G_sar)).dot(slip[i,:])
     
-#             else:
-#                 dhat = G.dot(slip[scount,:])
+            else:
+                dhat = G.dot(slip[i,:])
 
-            dhat = np.column_stack((
-                np.vstack((G, G_sar)), block_diag(G_gps_ramp, G_sar_ramp)
-                )) @ res.x
+#           dhat = np.column_stack((
+#               np.vstack((G, G_sar)), block_diag(G_gps_ramp, G_sar_ramp)
+#               )) @ res.x
             
             if len_geod > 0:
                 r[0:len_geod] = d2R[0:len_geod] - W.dot(dhat[0:len_geod])
@@ -247,8 +354,8 @@ class TriInversion(object):
             
             misfit[i] = r.dot(r)
             
-            smoothness[i] = sum( (smo_fact*slip[i].dot(G_lap)) * (smo_fact*slip[i].dot(G_lap)) )
             ruff[i]       = sum( (slip[i].dot(G_lap)) * (slip[i].dot(G_lap)) )
+            smoothness[i] = sum( (smo_fact*slip[i].dot(G_lap)) * (smo_fact*slip[i].dot(G_lap)) )
             
             
             # print slip
@@ -263,7 +370,7 @@ class TriInversion(object):
     
             # compute the moment
             shearmodulus = self.green.modulus
-            [Mo, Mw]     = self.moment_tri_element(self.flt.vertex_enu, self.flt.element, slip[i], shearmodulus)
+            [Mo, Mw]     = self.flt.moment(slip[i].reshape(-1,3), shear_modulus=shearmodulus)
             moment[i]    = np.array([Mo, Mw])            
             
             # print the status
@@ -284,44 +391,46 @@ class TriInversion(object):
         self.WSAR       = WSAR
         self.ramp       = ramp
         
-        return
-        
-        
-    @staticmethod
-    def moment_tri_element(vertex, element, slip, shearmodulus):
-        '''
-        Calculate moment and magnitude for triangular element
-        Written by Zhao Bin, Institute of Seismology, CEA. May 2017
-        Mod by Zhao Bin, Apr. 24, 2019. Now 6.067 is used.
-    
-        Input:
-            vertex   : coordinate for vertex in ENU
-            element  : index of vertices for each triangular
-            slip     : list/array slip value for all elememts
-            shearmodulus:
-        Output:
-            Mo       : total moment
-            Mw       : magnitude
-        '''
-        
-        idx1    = element[:,0]-1
-        idx2    = element[:,1]-1
-        idx3    = element[:,2]-1
-        v1      = vertex[idx1]
-        v2      = vertex[idx2]
-        v3      = vertex[idx3]
+    def assemble_design_matrix(self, smo_fact):
+        """
+        Assemble desgin matrix for inversion.
+        """
+        G              = self.green.G
+        G_sar          = self.green.G_sar
+        G_gps_ramp     = self.green.G_gps_ramp
+        G_sar_ramp     = self.green.G_sar_ramp
+        n_ramp         = G_gps_ramp.shape[1]+G_sar_ramp.shape[1]
 
-        vec1    = v2 - v1
-        vec2    = v3 - v1
-        cross   = np.cross(vec1, vec2)
-        area    = 0.5 * np.linalg.norm(cross, axis=1)
-        slip    = slip.reshape(-1,3)
-        slip_mag= np.linalg.norm(slip[:,0:2], axis=1)
-        Mo      = 1e6 * area * slip_mag * shearmodulus
-        Mo_total  = np.sum(Mo)/1000.0
-        Mw_total  = 2.0/3.0*np.log10(Mo_total) - 6.067
-        return Mo_total, Mw_total
-    
+        # scale the G_lap
+        G_laps       = smo_fact*self.lap.G_lap
+        G_blocks1    = []
+        G_blocks2    = []
+        ramp_blocks1 = []
+        ramp_blocks2 = []
+
+        W, WSAR      = self.get_weight()
+        if  G.size > 0:
+            G_blocks1.append(W @ G)
+            G_blocks2.append(G)
+            ramp_blocks1.append(W @ G_gps_ramp)
+            ramp_blocks2.append(G_gps_ramp)
+
+        if G_sar.size > 0:
+            G_blocks1.append(WSAR @ G_sar)
+            G_blocks2.append(G_sar)
+            ramp_blocks1.append(WSAR @ G_sar_ramp)
+            ramp_blocks2.append(G_sar_ramp)
+
+        G_blocks1.append(G_laps)
+        G2I   = np.vstack(G_blocks1)
+        Gramp = np.vstack([linalg.block_diag(*ramp_blocks1),
+                            np.zeros((G_laps.shape[0], n_ramp))])
+        G2I   = np.column_stack((G2I, Gramp))
+
+        G2R   = np.column_stack((np.vstack(G_blocks2),
+                                    linalg.block_diag(*ramp_blocks2)))
+        return G2I, G2R
+
     @staticmethod
     def set_bounds(nelements, sar_switch, **varargin):
         '''
@@ -338,6 +447,7 @@ class TriInversion(object):
             bu          = upper bound of parameter
             bl          = lower bound of parameter
         '''            
+        from numpy import array, genfromtxt, remainder, zeros
     
         slip_lb, slip_ub = '', ''
         for (k,v) in varargin.items():
@@ -382,8 +492,8 @@ class TriInversion(object):
                 slip_ub = v
 
         nelems    = 3*nelements
-        # if sar_switch == True:
-        #     nelems = nelems + 3
+        if sar_switch == True:
+            nelems = nelems + 3
 
         bl = np.zeros((nelements,3))
         bu = np.zeros((nelements,3))
@@ -401,10 +511,10 @@ class TriInversion(object):
         # if slip bound files are exist, then overwrite the bound array bu and bl
         if slip_lb != '' and slip_ub != '':
             nelems    = 3*nelements
-            bl[0:nelems] = np.genfromtxt(slip_lb, usecols = [3,4,5]).reshape(nelems)
-            bu[0:nelems] = np.genfromtxt(slip_ub, usecols = [3,4,5]).reshape(nelems)
+            bl[0:nelems] = genfromtxt(slip_lb, usecols = [3,4,5]).reshape(nelems)
+            bu[0:nelems] = genfromtxt(slip_ub, usecols = [3,4,5]).reshape(nelems)
     
-        return bu, bl 
+        return bu, bl         
 
         
 if __name__ == '__main__':

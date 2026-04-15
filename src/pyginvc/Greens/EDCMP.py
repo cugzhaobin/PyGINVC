@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 # Written by Zhao Bin, when he is at UC Berkeley. Mar 7 2016
 # Revised by Zhao Bin, Apr. 26, 2019. to Object Oriented Code.
-import h5py, os
 import numpy as np
 import subprocess, logging
 from pyginvc.libs import geotools as gt
+from pyginvc.Greens.BaseGreen import BaseGreen
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
                     datefmt="%d-%m-%Y %H:%M:%S")
 
 
-class EDCMP(object):
+class EDCMP(BaseGreen):
     '''
     Okada is a class representing rectangualr dislocation
     '''    
@@ -25,38 +25,24 @@ class EDCMP(object):
             data       = an instance of class GeoData
             dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
         '''
-        
-        greenfile = dict_green['greenfile']
-        if greenfile == "":
-            self.GenGreens(flt, data, dict_green)
-        elif greenfile == "SAVE":
-            self.GenGreens(flt, data, dict_green)
-            with h5py.File('greenfunc.h5', 'w') as h5:
-                h5.create_dataset('G', data = self.G, compression='gzip')
-                h5.create_dataset('G_sar', data = self.G_sar, compression='gzip')
-        elif os.path.isfile(greenfile):
-            with h5py.File(greenfile, 'r') as h5:
-                self.G     = h5['G'][()]
-                self.G_sar = h5['G_sar'][()]
-        else:
-            self.GenGreens(flt, data, dict_green)
-            
-        return
+        super(EDCMP, self).__init__(flt, data, dict_green)
+
+    def build_greens(self):
+        if not self.load_greens():
+            self.generate_greens()
+            self.save_greens()
+        logging.info("Building Green's functions finished.")
 
 
-    def GenGreens(self, flt, data, dict_green):
+    def generate_greens(self):
         '''
         Generate Green's Function.
 
-        Input:
-            flt        = an instance of class Fault
-            data       = an instance of class GeoData
-            dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
         Output:
             self.G     = Green's function for GPS
             self.G_sar = Green's function for InSAR
         '''
-
+        flt, data, dict_green = self.flt, self.data, self.dict_green
         llh_gps       = data.llh_gps
         llh_lev       = data.llh_lev
         llh_sar       = data.llh_sar
@@ -118,7 +104,6 @@ class EDCMP(object):
         # print the status
         logging.info('Green function for geodetic data are computed using Okada model.')
         
-        return
         
     def MakeGGPS(self, edcmp_flt, xy, greentype, gdim, grndir, grn_ssfile, grn_dsfile, grn_clfile):
         '''

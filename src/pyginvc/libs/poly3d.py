@@ -442,8 +442,9 @@ def vertex_element_from_faultgeom(faultfile, origin):
         vertex    :
         elem      :
     '''
-    from pyginvc.Geometry.Fault import Fault
+    from pyginvc.Geometry.Patch import Fault
     flt               = Fault(faultfile, 1, 1, False, origin=origin)
+    flt.load_fault()
     felem             = flt.felem
     vertex            = np.zeros((4*len(felem), 3))
     elements          = []

@@ -1,101 +1,41 @@
-
 import logging
 import numpy as np
 from scipy import optimize
-from scipy import linalg
+from pyginvc.Inversion.BaseInversion import BaseInversion
 
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
                     datefmt="%d-%M-%Y %H:%M:%S")
 
-class BlockBackslipInversion:
+class BlockBackslipInversion(BaseInversion):
     def __init__(self, data, fault, green, lap, dict_weight, dict_bound):
+        super().__init__(data, dict_weight, dict_bound)
         self.fault       = fault
-        self.data        = data
         self.green       = green
         self.lap         = lap
-        self.dict_weight = dict_weight
-        self.dict_bound  = dict_bound
-        
-        if fault is None or lap is None or green is None:
-            self.is_invert_backslip = False
-            logging.info('Fault, Green function or Laplacian is not provided. Backslip inversion will be skipped.')
-        else:
-            self.is_invert_backslip = True
-
-
-    def assemble_data_vector(self, nfault):
-        data = self.data
-        # weighted data vector
-        d_gps         = data.d_gps
-        d_lev         = data.d_lev
-        d_sar         = data.d_sar
-        d_geod        = np.hstack([x for x in (d_gps, d_lev) if x.size>0])
-        
-        len_geod      = len(d_geod)
-        len_sar       = len(d_sar)
-        wgps          = self.dict_weight['wgps']
-        wsar          = self.dict_weight['wsar']
-        
-        # weight
-        WSAR          = np.zeros_like(data.W_sar)
-        W             = data.W
-        
-        
-        d_lap         = np.zeros(3 * nfault)
-        
-        di_block, dr_block = [], []
-        if len_geod > 0:
-            wd = W @ d_geod
-            di_block.append(wd.flatten())
-            dr_block.append(wd.flatten())
-
-        if len_sar > 0:
-            ws = WSAR @ d_sar
-            di_block.append(ws)
-            dr_block.append(ws)
-
-        if d_lap.size > 0:
-            di_block.append(d_lap)
-
-        d2I = np.hstack(di_block)
-        d2R = np.hstack(dr_block)
-
-        return d2I, d2R
-
-    def assemble_desigin_matrix(self, nblock, G_gps_block, G_sar_block, smo_fact):
-        """
-        Assemble degin matrix for inversion.
-        """
-        if self.is_invert_backslip is False:
-            nparam = nblock*3
-        else:
-            nparam = nblock*3 + self.fault.nf*3
             
-        if self.lap is None:
-            G_lap_part = np.empty((0,nparam))
-        else:
-            G_lap_part = np.zeros((self.lap.G_lap.shape[0], nparam))
-        
-        G_gps_part = np.zeros((G_gps_block.shape[0], nparam))
-        G_gps_part[:, 0:G_gps_block.shape[1]] = G_gps_block
-        
-        # GPS part
-        if self.is_invert_backslip:
-            G_gps_part[:, 3*nblock:3*nblock+self.green.G.shape[0]] = -1*self.green.G
+    def assemble_design_matrix(self, nblock, G_gps_block, smo_fact):
+        """
+        Assemble desgin matrix for inversion.
+        """
+
+        nparam     = nblock*3 + self.fault.nf*3
+        G_gps_part, G_sar_part = np.empty(0), np.empty(0)
+        if self.green.G.size > 0:
+            G_gps_part = np.column_stack([G_gps_block, -self.green.G])
         
         # SAR part
-        if self.green.G_sar > 0 and self.green is not None:
+        if self.green.G_sar.size >0:
             G_sar_part = np.zeros((self.green.G_sar.shape[0], nparam))
-            G_sar_part[:, :G_sar_block.shape[1]] = G_sar_block
-            G_sar_part[nblock*3+self.green.G.shape[1]:nblock*3+self.green.G.shape[1]+self.green.G_sar.shape[1], 
-                    nblock*3+self.green.G.shape[1]:nblock*3+self.green.G.shape[1]+self.green.G_sar.shape[1]] = -1*self.green.G_sar
+            G_sar_part[:,3*nblock:] = -self.green.G_sar
         
-        WSAR  = np.zeros_like(self.data.W_sar)
-        W     = self.data.W
+        G_lap_part = np.zeros((self.lap.G_lap.shape[0], nparam))
+        G_lap_part[:,3*nblock:] = self.lap.G_lap
+
+        W, WSAR = self.get_weight()
         
-        if G_sar_block is not None:
+        if G_sar_part.size > 0:
             G2I = np.vstack([W @ G_gps_part, WSAR @ G_sar_part, smo_fact*G_lap_part])
             G2R = np.vstack([W @ G_gps_part, WSAR @ G_sar_part])
             G   = np.vstack([G_gps_part, G_sar_part])
@@ -106,26 +46,16 @@ class BlockBackslipInversion:
 
         return G2I, G2R, G
 
-    def inversion(self, nblock, G_gps_block, G_sar_block):
-        if self.fault is None:
-            d2I, d2R = self.assemble_data_vector(0)
-        else:
-            d2I, d2R = self.assemble_data_vector(self.fault.nf)
+    def inversion(self, nblock, G_gps_block):
+
+        d2I, d2R = self.assemble_data_vector(self.fault.nf)
         
         # unpack data
-        smoothfactor  = self.dict_weight['smoothfactor']
         dict_bound    = self.dict_bound
 
-        if self.fault is None:
-            nf    = 0
-            nsegs = 0
-            ndeps = 0
-            dis_geom_grid = np.empty(0)
-        else:
-            nf            = self.fault.nf
-            nsegs         = self.fault.nsegs
-            ndeps         = self.fault.ndeps
-            dis_geom_grid = self.fault.dis_geom_grid
+        nf            = self.fault.nf
+        nsegs         = self.fault.nsegs
+        ndeps         = self.fault.ndeps
 
         # dimensions
         len_gps        = len(self.data.d_gps)
@@ -134,10 +64,8 @@ class BlockBackslipInversion:
         len_all        = len_geod + len_sar
 
         # smoothing factors
-        smf1, smf2, step = smoothfactor
-        smo_facts        = np.arange(smf1, smf2, step)
-        nsmooth          = len(smo_facts) if len(smo_facts)>0 else 1
-
+        smo_facts      = self.get_smoothing_factors()
+        nsmooth        = len(smo_facts)
 
         # init parameters
         slip           = np.zeros((nsmooth, 3*nf))
@@ -150,28 +78,21 @@ class BlockBackslipInversion:
         ruff           = np.zeros(nsmooth)
         moment         = np.zeros((nsmooth,2))
         euler          = np.zeros((nsmooth,3*nblock))
-        sar_switch     = 0
 
+        nparam         = nblock*3 + nf*3
+        bu             = np.full(nparam, np.inf)
+        bl             = np.full(nparam,-np.inf)
+        slp_bu, slp_bl = self.set_slip_bounds(nsegs, ndeps, 0, **dict_bound)
+        bl[3*nblock:]  = slp_bl
+        bu[3*nblock:]  = slp_bu
+        
+        W, WSAR        = self.get_weight()
 
         # inversion loop
-        G_sar_list   = np.empty((0,0))
-        if self.green is not None:
-            nparam = nblock*3 + nf*3
-        else:
-            nparam = nblock*3
         for i, smo_fact in enumerate(smo_facts):
             logging.info(f'Inversion {i+1} | smoothing factor = {smo_fact}')
-            bl = np.full(nparam, -np.inf)
-            bu = np.full(nparam, np.inf)
-            bl[3*nblock::3]   = -20.0
-            bl[3*nblock+1::3] = 0.0
-            bl[3*nblock+2::3] = 0.0
-            bu[3*nblock::3]   = 00.0
-            bu[3*nblock+1::3] = 1e-3
-            bu[3*nblock+2::3] = 1e-3
-            
 
-            G2I, G2R, G = self.assemble_desigin_matrix(nblock, G_gps_block, G_sar_block, smo_fact)
+            G2I, G2R, G = self.assemble_design_matrix(nblock, G_gps_block, smo_fact)
 
             # if constrained linear least square method is used
             if dict_bound['bound_switch']:
@@ -182,18 +103,14 @@ class BlockBackslipInversion:
                 x, *_   = np.linalg.lstsq(G2I, d2I, rcond=None)
                 logging.info('Unconstrained linear least square finished.')
 
-
-            if self.fault is not None:
-                slip[i]  = x[3*nblock:]
+            slip[i]  = x[3*nblock:]
             euler[i] = x[:3*nblock]
             
-
-            WSAR  = np.zeros_like(self.data.W_sar)
-            W     = self.data.W
+            
             dhat  = G @ x
             if len_geod > 0:
-                r[0:len_geod] = d2R[0:len_geod] -  W @ dhat[0:len_geod]
-                r_gps         = r[0:len_geod]
+                r[0:len_geod] = d2R[:len_geod] -  W @ dhat[:len_geod]
+                r_gps         = r[:len_geod]
                 misfit_gps[i] = r_gps.dot(r_gps)
                 logging.info('GPS Weighted Residual Sum of Squares (WRSS) %10.3f' %(misfit_gps[i]))
                 logging.info('GPS: WRSS/(N) %f' %(misfit_gps[i]/len_gps))
@@ -205,11 +122,13 @@ class BlockBackslipInversion:
                 logging.info('SAR Weighted Residual Sum of Squares (WRSS) %10.3f' %(misfit_sar[i]))
                 logging.info('SAR: WRSS/(N) %f' %(misfit_sar[i]/len_sar))
 
-            misfit[i]     = r.dot(r)
-        
-            misfit[i]     = r.dot(r)
-            smoothness[i] = np.sum((self.lap @ slip[i])**2)
-            ruff[i]       = np.sum((self.lap @ slip[i])**2)
+            misfit[i]     = misfit_gps[i] + misfit_sar[i]
+            lap_slip      = self.lap.G_lap @ slip[i]
+            smoothness[i] = np.sum((smo_fact*lap_slip)**2)
+            ruff[i]       = np.sum(lap_slip**2)
+            shearmodulus  = self.green.modulus
+            [Mo, Mw]      = self.fault.moment(slip[i].reshape(-1,3), shear_modulus=shearmodulus)
+            moment[i]     = np.array([Mo, Mw]) 
         
         self.ruff       = ruff
         self.misfit_gps = misfit_gps
@@ -219,7 +138,8 @@ class BlockBackslipInversion:
         self.sig_slip   = sig_slip
         self.r          = r
         self.dhat       = dhat
-        self.moment     = moment
         self.smo_facts  = smo_facts
         self.smoothness = smoothness
         self.WSAR       = WSAR
+        self.euler      = euler
+        self.x          = x

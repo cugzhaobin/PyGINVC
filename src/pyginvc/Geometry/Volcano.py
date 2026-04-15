@@ -24,6 +24,17 @@ class Volcano(object):
             volfile : file containins volcano location and volumn changes
         
         '''
+        self.volfile = volfile
+        self.location_llh = np.empty((0,2))
+        self.location_enu = np.empty((0,2))
+        self.origin       = origin
+        self.nvol         = len(location)
+        self.volumn       = np.empty(0)
+
+
+    def load_vlocano(self):
+
+        volfile = self.volfile
         # check the file is exit
         isfile = os.path.isfile(volfile)
         if (isfile == False):
@@ -32,7 +43,7 @@ class Volcano(object):
      
         # read in location of volcanos
         location = np.genfromtxt(volfile, comments='#', usecols=[0,1,2])
-        if location.ndim == 1: location = location.reshape((1,len(location)))
+        if location.ndim == 1: location = location.reshape((1, -1))
         
         # read in volumn changes
         volumn  = np.genfromtxt(volfile, comments='#', usecols = [3])

@@ -17,8 +17,6 @@ from pyginvc.Inversion.TriInversion import TriInversion
 from pyginvc.Export.Output import Output
 from pyginvc.Export import View
 
-
-
 class SlipInversion:
     '''
     SlipInversion is a class representing slip inversion on rectangular patches from geodetic data.
@@ -74,6 +72,7 @@ class SlipInversion:
         else:
             lapmethod = '2'
         data      = GeoData(gpsfile, sarfile, levfile, gfiletype)
+        data.load_data()
         data.DumpData()
     
         #
@@ -82,6 +81,7 @@ class SlipInversion:
         vertexfile  = dict_fault['vertexfile']
         elementfile = dict_fault['elementfile']
         flt         = Triangle(vertexfile, elementfile, origin=[])
+        flt.load_fault()
         flt.DumpFault()
         
 
@@ -99,18 +99,21 @@ class SlipInversion:
         else:
             from pyginvc.Greens.Nikkhoo import Nikkhoo
             green = Nikkhoo(flt, data, dict_green)
+        green.build_greens()
 
         
         #
         # Laplacian 
         #
         lap        = TriLap(flt.vertex_enu, flt.element, method=lapmethod)
+        lap.build_laps()
         lap.DumpLap()
 
         #
         # Inversion
         #
         sol        = TriInversion(flt, data, green, lap, dict_weight, dict_bound)
+        sol.run_inversion_clean()
         
         #
         # Output

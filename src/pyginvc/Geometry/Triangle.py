@@ -35,16 +35,24 @@ class Triangle(object):
         vertex_llh  : geophysical coordinates for vertex [latitutde longitude]
         element     : index of vertex for each triangular element
         '''
+
+        self.vertexfile  = vertexfile
+        self.elementfile = elementfile
+        self.origin      = origin
+
+    def load_fault(self):
+        vertexfile  = self.vertexfile
+        elementfile = self.elementfile
         # check the file is exit
-        isfile = os.path.isfile(vertexfile)
+        isfile = os.path.exists(vertexfile)
         if (isfile == False):
-           logging.warning ('{} is not exist! Please input another file!'.format(vertexfile))
+           logging.fatal ('{} is not exist! Please input another file!'.format(vertexfile))
            sys.exit()
      
         # check the file is exit
-        isfile = os.path.isfile(elementfile)
+        isfile = os.path.exists(elementfile)
         if (isfile == False):
-           logging.warning('{} is not exist! Please input another file!'.format(elementfile))
+           logging.fatal('{} is not exist! Please input another file!'.format(elementfile))
            sys.exit()
         
         # read vertex, element and slip
@@ -53,7 +61,7 @@ class Triangle(object):
         slip       = np.genfromtxt(elementfile, comments='#', usecols = [3,4,5])
         
         # calculate the origin
-        if len(origin) != 2:
+        if len(self.origin) != 2:
             lat0   = np.mean(vertex_llh[:,0])
             lon0   = np.mean(vertex_llh[:,1])
             origin = np.array([lat0, lon0])
@@ -70,7 +78,7 @@ class Triangle(object):
         tri    = vertex_enu[element-1]
         crossd = np.cross(tri[:,1]-tri[:,0], tri[:,2]-tri[:,0])
         idx    = np.where(crossd[:,2]<0)[0]
-        logging.info('{} elements will be enforced to clockwise'.format(len(idx)))
+        logging.info(f"{len(idx)} elements will be enforced to clockwise.")
         element[idx] = element[idx][:,[0,2,1]]
         
         # return results
@@ -81,9 +89,9 @@ class Triangle(object):
         self.nf         = len(element)
         self.slip       = slip
         self.rake       = np.rad2deg(np.arctan2(self.slip[:,1], self.slip[:,0]))
-        return
 
-    def Moment(self, shearmodulus=3e10):
+
+    def moment(self, slip, shear_modulus=3e10):
         '''
         Calaulate moment
         '''
@@ -100,58 +108,57 @@ class Triangle(object):
         vec2    = v3 - v1
         cross   = np.cross(vec1, vec2)
         area    = 0.5 * np.linalg.norm(cross, axis=1)
-        ss      = self.slip[:,0]
-        ds      = self.slip[:,1]
-        tslip   = np.sqrt(ss**2 + ds**2)
-        Mo      = 1e6 * area * tslip * shearmodulus
+        tslip   = np.linalg.norm(slip, axis=1)
+        Mo      = 1e6 * area * tslip * shear_modulus
         Mo_total  = np.sum(Mo)/1000.0
         Mw_total  = 2.0/3.0*np.log10(Mo_total) - 6.067
         return Mo_total, Mw_total
 
 
-    def Triangle2VTK(self):
+    def Triangle2VTK(self, filename):
         '''
         Write the fault geometry and slip distribution to VTK file for Paraview.
         '''
+        nf         = self.nf
+        slip       = self.slip
+        vertex_enu = self.vertex_enu
+        element    = self.element
+        total_slip = np.linalg.norm(slip, axis=1)
 
-        nf = len(self.element)
-        with open('faultgeom.vtp', 'w') as fid:
-            fid.writelines(["<?xml version=\"1.0\"?>\n",
-                       "<VTKFile type=\"PolyData\" version=\"0.1\">\n",
-                       "  <PolyData>\n"])
+        lines = [
+            '<?xml version="1.0"?>',
+            '<VTKFile type="PolyData" version="0.1">',
+            '  <PolyData>'
+        ]
 
-            for i in range(0,nf):
-                enu = self.vertex_enu[self.element[i]-1]
-                fid.write("    <Piece NumberOfPoints=\"3\" NumberOfPolys=\"1\">\n")
-                fid.write("      <Points>\n")
-                fid.write("        <DataArray type=\"Float32\" Name=\"Fault Patch\" NumberOfComponents=\"3\" format=\"ascii\">\n")
-                fid.write("         {} {} {}\n".format(enu[0,0], enu[0,1], -enu[0,2]))
-                fid.write("         {} {} {}\n".format(enu[1,0], enu[1,1], -enu[1,2]))
-                fid.write("         {} {} {}\n".format(enu[2,0], enu[2,1], -enu[2,2]))
-                fid.write("         </DataArray>\n")
-                fid.write("      </Points>\n")
-                fid.write("      <Polys>\n")
-                fid.write("        <DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\" RangeMin=\"0\" RangeMax=\"{}\">\n".format(nf-1))
-                fid.write("0 1 2\n")
-                fid.write("        </DataArray>\n")
-                fid.write("        <DataArray type=\"Int32\" Name=\"offsets\" format=\"ascii\" RangeMin=\"3\" RangeMax=\"3\">\n")
-                fid.write("          3\n")
-                fid.write("        </DataArray>\n")
-                fid.write("      </Polys>\n")
-                fid.write("      <CellData Scalar=\"geometry\">\n")
-                fid.write("        <DataArray type=\"Float32\" Name=\"strike slip\" NumberOfComponents=\"1\" format=\"ascii\">\n")
-                fid.write("{}\n".format(self.slip[i,0]))
-                fid.write("        </DataArray>\n")
-                fid.write("        <DataArray type=\"Float32\" Name=\"dip slip\" NumberOfComponents=\"1\" format=\"ascii\">\n")
-                fid.write("{}\n".format(self.slip[i,1]))
-                fid.write("        </DataArray>\n")
-                fid.write("        <DataArray type=\"Float32\" Name=\"slip\" NumberOfComponents=\"1\" format=\"ascii\">\n")
-                fid.write("{}\n".format(np.sqrt(self.slip[i,0]**2+self.slip[i,1]**2)))
-                fid.write("        </DataArray>\n")
-                fid.write("      </CellData>\n")
-                fid.write("    </Piece>\n")
-            fid.write("  </PolyData>\n")
-            fid.write("</VTKFile>\n")
+        for i in range(nf):
+            enu = vertex_enu[element[i] - 1]
+            lines.append(f'''    <Piece NumberOfPoints="3" NumberOfPolys="1">
+        <Points>
+            <DataArray type="Float32" Name="Fault Patch" NumberOfComponents="3" format="ascii">
+            {enu[0,0]} {enu[0,1]} {-enu[0,2]}
+            {enu[1,0]} {enu[1,1]} {-enu[1,2]}
+            {enu[2,0]} {enu[2,1]} {-enu[2,2]}
+            </DataArray>
+        </Points>
+        <Polys>
+            <DataArray type="Int32" Name="connectivity">0 1 2</DataArray>
+            <DataArray type="Int32" Name="offsets">3</DataArray>
+        </Polys>
+        <CellData Scalar="geometry">
+            <DataArray type="Float32" Name="strike slip">{slip[i,0]}</DataArray>
+            <DataArray type="Float32" Name="dip slip">{slip[i,1]}</DataArray>
+            <DataArray type="Float32" Name="slip">{total_slip[i]}</DataArray>
+        </CellData>
+        </Piece>''')
+
+        lines += [
+            '  </PolyData>',
+            '</VTKFile>'
+        ]
+
+        with open(filename, 'w') as fid:
+            fid.write('\n'.join(lines))
 
 
     def DumpFault(self):
@@ -161,4 +168,3 @@ class Triangle(object):
             h5['vertex_llh'] = self.vertex_llh
             h5['element']    = self.element
             h5['slip']       = self.slip
-            

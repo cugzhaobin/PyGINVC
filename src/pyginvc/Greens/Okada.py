@@ -6,7 +6,6 @@ import logging
 import numpy as np
 from scipy import linalg
 from numpy import cos, sin, deg2rad
-from pyginvc.libs import geotools as gt
 from pyginvc.Greens import okada85 as okada
 from pyginvc.Greens.BaseGreen import BaseGreen
 #from okada_wrapper import dc3dwrapper
@@ -31,8 +30,14 @@ class Okada(BaseGreen):
         '''
         super(Okada, self).__init__(flt, data, dict_green)
 
+    def build_greens(self):
+        if not self.load_greens():
+            self.generate_greens()
+            self.save_greens()
+        self.rotate_greens()
+        logging.info("Building Green's functions finished.")
 
-    def GenGreens(self, flt, data, dict_green):
+    def generate_greens(self):
         '''
         Generate Green's Function.
 
@@ -44,6 +49,9 @@ class Okada(BaseGreen):
             self.G     = Green's function for GPS
             self.G_sar = Green's function for InSAR
         '''
+        data          = self.data
+        flt           = self.flt
+        dict_green    = self.dict_green
 
         llh_gps       = data.llh_gps
         llh_lev       = data.llh_lev
@@ -53,11 +61,16 @@ class Okada(BaseGreen):
         origin        = flt.origin
         dis_geom_grid = flt.dis_geom_grid
         
-        greentype     = dict_green['greentype']
+        ss, ds, op    = dict_green['greentype']
         nu            = dict_green['nu']
         verbose       = dict_green.get('verbose', True)
         
         # convert the LLH to local coordinate
+        xy_gps        = self._convert_to_local(llh_gps, origin)
+        xy_sar        = self._convert_to_local(llh_sar, origin)
+        xy_lev        = self._convert_to_local(llh_lev, origin)
+
+        """
         xy_gps        = np.zeros((len(llh_gps),2))
         xy_lev        = np.zeros((len(llh_lev),2))
         xy_sar        = np.zeros((len(llh_sar),2))
@@ -72,61 +85,45 @@ class Okada(BaseGreen):
         if len(llh_sar) > 0:
             for i in range(len(llh_sar)):
                 xy_sar[i,:] = gt.llh2localxy(llh_sar[i], origin)
+        """
     
         # if we have GPS data
-        G_dis = np.empty((0,0))
-        if len(xy_gps) > 0 and len(dis_geom_grid)>0:
-            G_dis = self.MakeGGPS(dis_geom_grid, xy_gps, nu, greentype[0], greentype[1], greentype[2], ndim)
-    
-            # print the status
+        if xy_gps.size > 0 and dis_geom_grid.size > 0:
+            self.G = self.make_gps_green(dis_geom_grid, xy_gps, nu, ss, ds, op, ndim)
             if verbose:
-                logging.info('Green\'s functions for %d GPS stations are computed.' %(len(xy_gps)))
-        G = G_dis
+                logging.info(f"Green's functions for {len(xy_gps)} GPS stations are computed.")
             
         # if we have level data
-        G_dis = np.empty((0,0))
-        if len(xy_lev) > 0:
-            G_dis = self.MakeGLEV(dis_geom_grid, xy_lev, nu, greentype[0], greentype[1], greentype[2])
-            G = np.hstack((G, G_dis))
-    
+        if xy_lev.size > 0:
+            G_lev  = self.make_gps_green(dis_geom_grid, xy_lev, nu, ss, ds, op)
+            self.G = np.vstack((self.G, G_lev))
             if verbose:
-                logging.info('Green\'s functions for %d Level stations are computed.' %(len(xy_lev)))
+                logging.info(f"Green's functions for {len(xy_lev)} level stations are computed.")
         
         # if we have SAR data
-        G_sar   = np.empty((0,0))
-        if len(xy_sar) > 0:
-            G_sar = self.MakeGSAR(unit, dis_geom_grid, xy_sar, nu, greentype[0], greentype[1], greentype[2])
-    
-            # print the status
+        if xy_sar.size > 0:
+            self.G_sar = self.make_sar_green(unit, dis_geom_grid, xy_sar, nu, ss, ds, op)
             if verbose:
-                logging.info('Green\'s functions for %d InSAR points are computed.' %(len(xy_sar)))
+                logging.info(f"Green's functions for {len(xy_sar)} InSAR points are computed.")
         
-        self.G     = G
-        self.G_sar = G_sar
-        
-        if 'gps_ramp' in dict_green.keys() and dict_green['gps_ramp']:
-            self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim, method=1)
+        if dict_green.get('gps_ramp', False):
+            self.G_gps_ramp = self.make_green_gps_ramp(xy_gps, ndim, method=1)
         else:
-            self.G_gps_ramp = np.empty((len(self.data.d_gps),0))
-        if 'sar_ramp' in dict_green.keys() and dict_green['sar_ramp']:
-            if len(G_sar) > 0:
-                sizes = data.n_sar
-                G_sar_ramp = []
-                for i in range(len(sizes)):
-                    start = sum(sizes[:i])
-                    end   = sum(sizes[:i+1])
-                    G_sar_ramp.append(self.MakeGSARRamp(xy_sar[start:end]))
-                    self.G_sar_ramp = linalg.block_diag(*G_sar_ramp)
-            else:
-                self.G_sar_ramp = np.zeros((0,0))
+            self.G_gps_ramp = np.empty((self.G.shape[0],0))
+        if dict_green.get('sar_ramp', False):
+            sizes = data.n_sar
+            ramp  = []
+            for i in range(len(sizes)):
+                start = sum(sizes[:i])
+                end   = sum(sizes[:i+1])
+                ramp.append(self.make_green_sar_ramp(xy_sar[start:end]))
+            self.G_sar_ramp = linalg.block_diag(*ramp)
         else:
             self.G_sar_ramp = np.empty((self.G_sar.shape[0],0))
 
-        # print the status
-        if verbose:
-            logging.info('Green function for geodetic data are computed using Okada model.')
+        logging.info("Green's function are computed using Okada model.")
         
-    def MakeGGPS(self, dis_geom, xy, nu, ss, ds, op, gdim):
+    def make_gps_green(self, dis_geom, xy, nu, ss, ds, op, gdim):
         '''
         Make green's function for GPS data
         Written by Zhao Bin when his is in UC Berkeley, Jan 28 2016
@@ -148,54 +145,35 @@ class Okada(BaseGreen):
             dis_geom = dis_geom.reshape(-1,10)
         if xy.ndim == 1: 
             xy = xy.reshape(-1,2)
-        nf   = dis_geom.shape[0]
-        nsta = xy.shape[0]
-    
-        # whether we used 3D data
-        if gdim == 3:
-            ndata = nsta*3
-        else:
-            ndata = nsta*2
-    
-        # init for G
-        G = np.zeros((ndata,3*nf))
+
+        nf    = self.flt.nf
+        nobs  = len(xy) * self.data.ndim    
+        G     = np.zeros((nobs, 3*nf))
     
         # for each subfaults
         for i in range(nf):
             # if we want to constrain strike slip 
             if bool(ss) is True:
-                source         = np.hstack((dis_geom[i,0:7], [1,0,0]))
-                u_rel_1        = self.relative_disp(nu, source, xy) 
-                if gdim == 3:
-                    G[:,3*i]   = u_rel_1.T.flatten()
-                else:
-                    u_rel_1    = u_rel_1[0:2,:]
-                    G[:,3*i]   = u_rel_1.T.flatten()
+                source      = np.hstack((dis_geom[i,0:7], [1,0,0]))
+                u           = self.relative_disp(nu, source, xy)
+                G[:, 3*i+0] = u[:gdim].T.ravel()
          
             # if we want to constrain dip slip 
             if bool(ds) is True:
-                source         = np.hstack((dis_geom[i,0:7], [0,1,0]))
-                u_rel_2        = self.relative_disp(nu, source.flatten(), xy) 
-                if gdim == 3:
-                    G[:,3*i+1] = u_rel_2.T.flatten()
-                else:
-                    u_rel_2    = u_rel_2[0:2,:]
-                    G[:,3*i+1] = u_rel_2.T.flatten()
+                source      = np.hstack((dis_geom[i,0:7], [0,1,0]))
+                u           = self.relative_disp(nu, source, xy) 
+                G[:, 3*i+1] = u[:gdim].T.ravel()
     
             # if we want to constrain openning slip 
             if bool(op) is True:
-                source         = np.hstack((dis_geom[i,0:7], [0,0,1]))
-                u_rel_3        = self.relative_disp(nu, source.flatten(), xy) 
-                if gdim == 3:
-                    G[:,3*i+2] = u_rel_3.T.flatten()
-                else:
-                    u_rel_3    = u_rel_3[0:2,:]
-                    G[:,3*i+2] = u_rel_3.T.flatten()
-    
+                source      = np.hstack((dis_geom[i,0:7], [0,0,1]))
+                u           = self.relative_disp(nu, source, xy)
+                G[:, 3*i+2] = u[:gdim].T.ravel()
+
         return G
         
         
-    def MakeGSAR(self, unit, dis_geom, xy, nu, ss, ds, op):
+    def make_sar_green(self, unit, dis_geom, xy, nu, ss, ds, op):
         '''
         Make Green's Function for InSAR data
         This treats range change data as absolute with respect to a reference
@@ -221,10 +199,10 @@ class Okada(BaseGreen):
         if dis_geom.ndim == 1: 
             dis_geom = dis_geom.reshape(len(dis_geom),10)
         if xy.ndim == 1: 
-            xy = xy.reshape(len(xy),2)
+            xy = xy.reshape(-1,2)
             
-        nf     = dis_geom.shape[0]
-        ndata  = xy.shape[0]
+        nf     = self.flt.nf
+        ndata  = self.data.n_sar
 
         # Descending track unit vector
         if len(unit) == 0:
@@ -233,34 +211,25 @@ class Okada(BaseGreen):
             unit      = np.array([-cos(deg2rad(track))*sin(deg2rad(lookangle)), 
                                   sin(deg2rad(track))*sin(deg2rad(lookangle)), 
                                  -cos(deg2rad(lookangle))])
-            unit      = -1.0*unit
+            unit      = -1.0 * unit
         G = np.zeros((ndata, 3*nf))
     
         # for each subfaults
         for i in range(nf):   
-            range_1 = np.zeros((ndata,1))
-            range_2 = np.zeros((ndata,1))
-            range_3 = np.zeros((ndata,1))
             # SS motion.
-            if ss != 0:
-                u        = self.disloc(nu, np.hstack((dis_geom[i,0:7],[1,0,0])), xy)
-                for j in range(ndata):
-                    range_1[j,:] = unit[j,:].dot(u[j,:])
-                G[:,3*i] = range_1.T
+            if bool(ss):
+                u          = self.disloc(nu, np.hstack((dis_geom[i,0:7],[1,0,0])), xy)
+                G[:,3*i+0] = (unit * u).sum(axis=1)
     
     	    # DS motion.
-            if ds != 0: 
+            if bool(ds): 
                 u          = self.disloc(nu, np.hstack((dis_geom[i,0:7],[0,1,0])), xy)
-                for j in range(ndata):
-                    range_2[j,:] = unit[j,:].dot(u[j,:])
-                G[:,3*i+1] = range_2.T
+                G[:,3*i+1] = (unit * u).sum(axis=1)
     
     	    # Opening
-            if op != 0: 
+            if bool(op): 
                 u          = self.disloc(nu, np.hstack((dis_geom[i,0:7],[0,0,1])), xy)
-                for j in range(ndata):
-                    range_3[j,:] = unit[j,:].dot(u[j,:])
-                G[:,3*i+2] = range_3.T
+                G[:,3*i+2] = (unit * u).sum(axis=1)
  
         return G
 
@@ -348,12 +317,8 @@ class Okada(BaseGreen):
         '''
     
         # get the number of stations in xy
-        xy         = np.mat(xy)
-        [nsta, m]  = xy.shape
-        xy         = np.array(xy)
-      
-        # init variables
-        u          = np.zeros((nsta, 3))
+        nsta = xy.shape[0]
+        u    = np.zeros((nsta, 3))
         for i in range(nsta):
             u[i,:] = self.disloc(nu, dis_geom, np.array([xy[i,0], xy[i,1]]))
     

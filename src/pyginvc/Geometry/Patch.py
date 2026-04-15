@@ -2,7 +2,7 @@
 
 import numpy as np
 import pandas as pd
-import os, sys, logging
+import os, logging
 from numpy import zeros, ones, deg2rad, rad2deg, sin, cos, sqrt
 from pyginvc.libs import geotools as gt
 
@@ -28,15 +28,13 @@ class Fault(object):
             origin      = [lat, lon]
         '''
         self.faultfile     = faultfile
-        self.nf            = None
+        self.nf            = 0
         self.doSubFault    = doSubFault
         self.origin        = np.asarray(origin)
         self.nsegs         = nsegs
         self.ndeps         = ndeps
         self.dis_geom_grid = np.array([])
-        self.geom_grid     = np.array([])
-        self.load_fault()    
-    
+        self.geom_grid     = np.array([])    
 
     def load_fault(self):
         # load the original fault geometry
@@ -61,7 +59,6 @@ class Fault(object):
             self.dis_geom_grid = np.column_stack((pm, zeros((self.nf,3))))            
             self.geom_grid     = self.disgeom2geom(self.dis_geom_grid)
             logging.info(f'Fault geometry is loaded and subdivided into {self.nsegs} * {self.ndeps} patches.')
-        return
     
     def LoadFaultGeom(self):
         '''
@@ -257,7 +254,8 @@ class Fault(object):
             disgeom = numpy array, shape(m,10). Leng, wid, dep, dip, strk, dE, dN, ss, ds, op
     
         Output:
-            flt_elem_all = numpy array, shape(m,33). Leng, wid, dip, strk, ss, ds, op, ts, rake, top_left_llh, top_right_llh, bottom_right_llh, bottom_left_llh, top_left_neu, top_right_neu, bottom_right_neu, bottom_left_neu
+            flt_elem_all = numpy array, shape(m,33). Leng, wid, dip, strk, ss, ds, op, ts, rake, top_left_llh, top_right_llh, bottom_right_llh, bottom_left_llh, 
+            top_left_neu, top_right_neu, bottom_right_neu, bottom_left_neu
         '''
 
         N            = 6378206.4
@@ -544,7 +542,6 @@ class Fault(object):
             fid.write("  5  ---------------------------  max. lat =%16.7f\n"   %rtllh[:,0])
             fid.write("  6  ---------------------------  zero lat =%16.7f\n"   %self.origin[0])
             fid.write("  7  ------------------------  Z-increment =%16.7f\n"   %1.0)
-        return
  
     def FaultGeom2EDCMP(self):
         '''
@@ -591,9 +588,6 @@ class Fault(object):
         MOD by Zhao Bin, Nov 2, 2016. correct for Rp 
         MOD by Zhao Bin, July 8, 2017. call FaultGeom2AllVertex function
     
-        Input file:
-            file name of FaultGeom
-    
         Output file:
             file in the format of VISCO1D program, the following is a sample of the file:
     
@@ -609,7 +603,6 @@ class Fault(object):
             print("%10.3f %10.3f %10.3f %8.2f %8.2f %10.3f %10.3f %10.3f %8.2f" 
                 %(r['rb_lat'], r['rb_lon'], r['width'], r['strike'], r['rake'],
                   r['total_slip']/10, -r['lt_dep'], -r['lb_dep'], r['dip']))
-        return
 
 
     def FaultGeom2VISCO2PT5D(self):
@@ -617,9 +610,6 @@ class Fault(object):
         Convert FaultGeom of DISMODEL program into the format of VISCO2.5D program
         Written By Zhao Bin, June 10, 2016
         MOD by Zhao Bin, Nov 2, 2016. correct for Rp
-    
-        Input file:
-            file name of FaultGeom
     
         Output file:
             file in the format of VISCO2PT5D program, the following is a sample of the file:
@@ -632,19 +622,18 @@ class Fault(object):
         active = felem[felem['total_slip']>0] 
     
         print("{}".format(len(active)))
-        for _, row in active:
+        for _, row in active.iterrows():
             if row['dip']<180:
                 dip  = row['dip']
                 rake = row['rake']
             else:
                 dip  = row['dip']-180
-                rake = row[rake]-90
+                rake = row['rake']-90
             top_dep = -row['lt_dep']
             bot_dep = -row['lb_dep']
             print(f"{top_dep:10.3f} {bot_dep:10.3f} {dip:5.2f}")
             print(f"{row['lb_lat']:10.3f} {row['lb_lon']:10.3f} {row['length']:10.3f} "
               f"{row['strike']:8.2f} {rake:8.2f} {row['total_slip']/10.:10.3f}")
-        return
 
 
     def FaultGeom2RELAX(self):
@@ -677,7 +666,6 @@ class Fault(object):
                       row['strike'],
                       row['dip'] % 180,
                       row['rake']))
-        return
                       
                          
     def FaultGeom2PSCMP(self):
@@ -713,7 +701,6 @@ class Fault(object):
             print("     %10.3f %10.3f %10.3f %10.3f %10.3f" 
                 %(r['length']/2.0, r['width']/2,
                   r['strike_slip']/1e3, -r['dip_slip']/1e3, r['tensile_slip']/1e3))
-        return
             
     def FaultGeom2GMT(self):
         '''
@@ -746,74 +733,55 @@ class Fault(object):
         # Write each slip type to its file
         for fname, slip_col in slip_mapping.items():
             write_gmtfile(fname, slip_col, felem)
-        return
 
-    def Moment(self, shear_modulus=3e10):
+    def moment(self, slip, shear_modulus=3e10):
         '''
         '''
-
-        Mo   = np.zeros(self.nf)
-        geom = self.geom_grid
-        slip = np.sqrt(geom[:,7]**2+geom[:,8]**2)
-        
-        for i in range(self.nf):
-            Mo[i] = 1e3*self.dis_geom_grid[i,0] * \
-                    1e3*self.dis_geom_grid[i,1] * \
-                    slip[i] * shear_modulus
-        
-        Mo_total = np.sum(Mo)/1e3
+        area     = self.dis_geom_grid[:,0] * self.dis_geom_grid[:,1] * 1e6
+        tol_slip = np.linalg.norm(slip, axis=1)
+        Mo       = area * tol_slip * shear_modulus
+        Mo_total = np.sum(Mo)/1000
         Mw_total = 2.0/3.0*np.log10(Mo_total) - 6.067
 
         return Mo_total, Mw_total
 
-    def FaultGeom2VTK(self, scale=1.0):
+    def FaultGeom2VTK(self, filename='faultgeom.vtp', scale=1.0):
         '''
         Write the fault geometry and slip distribution to VTK file for Paraview.
         '''
         felem = self.FaultGeom2AllVertex()
-        with open('faultgeom.vtp', 'w') as fid:
-            fid.writelines(["<?xml version=\"1.0\"?>\n",
-                       "<VTKFile type=\"PolyData\" version=\"0.1\">\n",
-                       "  <PolyData>\n"])
+        lines = []
+        lines.extend(['<?xml version="1.0"?>',
+                      '<VTKFile type="PolyData" version="0.1">',
+                      '  <PolyData>'])
 
-            for i, r in felem.iterrows():
-                fid.write("    <Piece NumberOfPoints=\"4\" NumberOfPolys=\"1\">\n")
-                fid.write("      <Points>\n")
-                fid.write("        <DataArray type=\"Float32\" Name=\"Fault Patch\" NumberOfComponents=\"3\" format=\"ascii\">\n")
-                fid.write("         {} {} {}\n".format(r['lt_e']*scale, r['lt_n']*scale, r['lt_u']*scale))
-                fid.write("         {} {} {}\n".format(r['re_e']*scale, r['rt_n']*scale, r['rt_u']*scale))
-                fid.write("         {} {} {}\n".format(r['rb_e']*scale, r['rb_n']*scale, r['rb_u']*scale))
-                fid.write("         {} {} {}\n".format(r['lb_e']*scale, r['lb_n']*scale, r['lb_u']*scale))
-                fid.write("         </DataArray>\n")
-                fid.write("      </Points>\n")
-                fid.write("      <Polys>\n")
-                fid.write("        <DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\" RangeMin=\"0\" RangeMax=\"{}\">\n".format(self.nf-1))
-                fid.write("0 1 2 3\n")
-                fid.write("        </DataArray>\n")
-                fid.write("        <DataArray type=\"Int32\" Name=\"offsets\" format=\"ascii\" RangeMin=\"4\" RangeMax=\"4\">\n")
-                fid.write("          4\n")
-                fid.write("        </DataArray>\n")
-                fid.write("      </Polys>\n")
-                fid.write("      <CellData Scalar=\"geometry\">\n")
-                fid.write("        <DataArray type=\"Float32\" Name=\"strike\" NumberOfComponents=\"1\" format=\"ascii\">\n")
-                fid.write("{}\n".format(r['strike']))
-                fid.write("        </DataArray>\n")
-                fid.write("        <DataArray type=\"Float32\" Name=\"dip\" NumberOfComponents=\"1\" format=\"ascii\">\n")
-                fid.write("{}\n".format(r['dip']))
-                fid.write("        </DataArray>\n")
-                fid.write("        <DataArray type=\"Float32\" Name=\"strike slip\" NumberOfComponents=\"1\" format=\"ascii\">\n")
-                fid.write("{}\n".format(r['strike_slip']))
-                fid.write("        </DataArray>\n")
-                fid.write("        <DataArray type=\"Float32\" Name=\"dip slip\" NumberOfComponents=\"1\" format=\"ascii\">\n")
-                fid.write("{}\n".format(r['dip_slip']))
-                fid.write("        </DataArray>\n")
-                fid.write("        <DataArray type=\"Float32\" Name=\"slip\" NumberOfComponents=\"1\" format=\"ascii\">\n")
-                fid.write("{}\n".format(r['total_slip']))
-                fid.write("        </DataArray>\n")
-                fid.write("      </CellData>\n")
-                fid.write("    </Piece>\n")
-            fid.write("  </PolyData>\n")
-            fid.write("</VTKFile>\n")
+        for i, r in felem.iterrows():
+            piece = f"""    <Piece NumberOfPoints="4" NumberOfPolys="1">
+                   <Points>
+                     <DataArray type="Float32" Name="Fault Patch" NumberOfComponents="3" format="ascii">
+                       {r['lt_e']*scale} {r['lt_n']*scale} {r['lt_u']*scale}
+                       {r['rt_e']*scale} {r['rt_n']*scale} {r['rt_u']*scale}
+                       {r['rb_e']*scale} {r['rb_n']*scale} {r['rb_u']*scale}
+                       {r['lb_e']*scale} {r['lb_n']*scale} {r['lb_u']*scale}
+                     </DataArray>
+                   </Points>
+                   <Polys>
+                     <DataArray type="Int32" Name="connectivity">0 1 2 3</DataArray>
+                     <DataArray type="Int32" Name="offsets">4</DataArray>
+                   </Polys>
+                 <CellData Scalar="geometry">
+                     <DataArray type="Float32" Name="strike">{r['strike']}</DataArray>
+                     <DataArray type="Float32" Name="dip">{r['dip']}</DataArray>
+                     <DataArray type="Float32" Name="strike_slip">{r['strike_slip']}</DataArray>
+                     <DataArray type="Float32" Name="dip_slip">{r['dip_slip']}</DataArray>
+                     <DataArray type="Float32" Name="total_slip">{r['total_slip']}</DataArray>
+                 </CellData>
+               </Piece>"""
+            lines.append(piece)
+        lines.extend(['  </PolyData>', '</VTKFile>'])
+        
+        with open(filename, 'w') as f:
+            f.write('\n'.join(lines))
 
     def plot_faultgeom(self, value=None, afsfile="", coordtype="llh", show_idx=False, azimuth=-40, elevation=40, sarfile="", gpsfile=""):
         """"""
@@ -1017,7 +985,6 @@ class Fault(object):
                 out = np.column_stack((self.geom_grid[:,0:7], slip*scale))
                 np.savetxt('output.faultgeom', out, fmt=fmt, header=header)
                 logging.info('Output a new faultgeom file.')
-        return
 
     def Merge_Faultgeoms(self, faultgeom_list):
         """

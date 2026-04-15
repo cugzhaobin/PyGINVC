@@ -30,21 +30,25 @@ class Nikkhoo(BaseGreen):
         '''
         super(Nikkhoo, self).__init__(flt, data, dict_green)
 
+    def build_greens(self):
+        if not self.load_greens():
+            self.generate_greens()
+            self.save_greens()
+        logging.info("Building Green's functions finished.")
 
-    def GenGreens(self, flt, data, dict_green):
+    def generate_greens(self):
         '''
         Input:
             flt        = an instance of class Fault
             data       = an instance of class GeoData
             dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
-
         '''
+        flt, data, dict_green = self.flt, self.data, self.dict_green
         llh_gps       = data.llh_gps
         llh_lev       = data.llh_lev
         llh_sar       = data.llh_sar
         ndim          = data.ndim
         unit          = data.unit
-        
         origin        = flt.origin
         node          = flt.vertex_enu
         element       = flt.element
@@ -58,55 +62,29 @@ class Nikkhoo(BaseGreen):
         op            = greentype[2]
         
         # convert the LLH to local coordinate
-        xy_gps        = np.zeros((len(llh_gps),2))
-        xy_lev        = np.zeros((len(llh_lev),2))
-        xy_sar        = np.zeros((len(llh_sar),2))
-
-
-        if len(llh_gps) > 0:
-            for i in range(len(llh_gps)):
-                xy_gps[i,:] = gt.llh2localxy(llh_gps[i], origin)
-                xy_gps[i,:] = gt.llh2utm(llh_gps[i], origin)
-            
-        if len(llh_lev) > 0:
-            for i in range(len(llh_lev)):
-                xy_lev[i,:] = gt.llh2localxy(llh_lev[i], origin)
-                xy_lev[i,:] = gt.llh2utm(llh_lev[i], origin)
-            
-        if len(llh_sar) > 0:
-            for i in range(len(llh_sar)):
-                xy_sar[i,:] = gt.llh2localxy(llh_sar[i], origin)
-                xy_sar[i,:] = gt.llh2utm(llh_sar[i], origin)
+        xy_gps        = self._convert_to_local(llh_gps, origin)
+        xy_lev        = self._convert_to_local(llh_lev, origin)
+        xy_sar        = self._convert_to_local(llh_sar, origin)
         
         logging.info('Begin to generating Greens function.')
-        # if we have GPS data
-        G_dis = np.array([])
         if len(xy_gps) > 0 and len(element)>0:
-            logging.info('Begin to compute Greens function for GPS station.')
-            G_dis = self.MakeGGPS_Tridisloc(node, element, xy_gps, mu, nu, ss, ds, op, ndim)
-    
-            # print the status
+            logging.info("Begin to compute Green's functions for GPS stations.")
+            self.G = self.MakeGGPS_Tridisloc(node, element, xy_gps, mu, nu, ss, ds, op, ndim)
             logging.info('Green function for %d GPS stations are computed.' %(len(xy_gps)))
-        G = G_dis
-                    
         
-        # if we have SAR data
-        G_sar   = np.array([])
         if len(xy_sar) > 0:
-            logging.info('Begin to compute Greens function for InSAR pixels.')
-            G_sar = self.MakeGSAR_Tridisloc(unit, node, element, xy_sar, mu, nu, ss, ds, op)
-    
-            # print the status
+            logging.info("Begin to compute Green's functions for InSAR pixels.")
+            self.G_sar = self.MakeGSAR_Tridisloc(unit, node, element, xy_sar, mu, nu, ss, ds, op)
             logging.info('Green function for %d InSAR points are computed.' %(len(xy_sar)))
         
         # print the status
-        logging.info('Green function for geodetic data are computed using triangular dislocation model.')
+        logging.info("Green's functions are computed using triangular dislocation model.")
         
-        self.G     = G
-        self.G_sar = G_sar
-        if 'gps_ramp' in dict_green.keys():
+        if dict_green.get('gps_ramp', False):
             self.G_gps_ramp = self.MakeGGPSRamp(xy_gps, ndim)
-        if 'sar_ramp' in dict_green.keys():
+        else:
+            self.G_gps_ramp = np.empty((self.G.shape[0],0))
+        if dict_green.get('sar_ramp', False):
             sizes = data.n_sar
             G_sar_ramp = []
             for i in range(len(sizes)):
@@ -114,6 +92,8 @@ class Nikkhoo(BaseGreen):
                 end   = sum(sizes[:i+1])
                 G_sar_ramp.append(self.MakeGSARRamp(xy_sar[start:end]))
             self.G_sar_ramp = linalg.block_diag(*G_sar_ramp)
+        else:
+            self.G_sar_ramp = np.empty((self.G_sar.shape[0],0))
 
     def MakeGGPS_Tridisloc(self, node, element, xy, mu, nu, ss, ds, op, gdim):
         '''
@@ -161,25 +141,16 @@ class Nikkhoo(BaseGreen):
             # strike slip
             if ss == 1:
                 disp = TDdispHS(rec, src, [1,0,0], nu)
-                if gdim == 3:
-                    G[:, 3*i] = disp.flatten()
-                elif gdim == 2:
-                    G[:, 3*i] = disp[:,[0,1]].flatten()
+                G[:, 3*i+0] = disp[:,:gdim].flatten()
             # dip slip
             if ds == 1:
                 disp = TDdispHS(rec, src, [0,1,0], nu)
-                if gdim == 3:
-                    G[:, 3*i+1] = disp.flatten()
-                elif gdim == 2:
-                    G[:, 3*i+1] = disp[:,[0,1]].flatten()
+                G[:, 3*i+1] = disp[:,:gdim].flatten()
 
             # open slip
             if op == 1:
                 disp = TDdispHS(rec, src, [0,0,1], nu)
-                if gdim == 3:
-                    G[:, 3*i+2] = disp.flatten()
-                elif gdim == 2:
-                    G[:, 3*i+2] = disp[:,[0,1]].flatten()
+                G[:, 3*i+2] = disp[:,:gdim].flatten()
     
         return G
     
@@ -259,4 +230,3 @@ class Nikkhoo(BaseGreen):
                     G[:,3*i+2] = range_3.T
     
         return G
-

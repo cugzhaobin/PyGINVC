@@ -7,19 +7,23 @@ import logging
 import numpy as np
 from scipy import optimize
 from scipy import linalg
+from pyginvc.Inversion.BaseInversion import BaseInversion
+from pyginvc.Geometry.Patch import Fault
+from pyginvc.GeoData.GeoData import GeoData
+
 
 logging.basicConfig(
-                    level=logging.INFO,
-                    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
-                    datefmt="%d-%M-%Y %H:%M:%S")
+    level=logging.INFO,
+    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
+    datefmt="%d-%M-%Y %H:%M:%S")
 
 
-class GeoInversion(object):
+class GeoInversion(BaseInversion):
     '''
     GeoInversion represents a class of slip inversion using geodetic data
     '''
     
-    def __init__(self, flt, data, green, lap, dict_weight, dict_bound):
+    def __init__(self, flt: Fault, data: GeoData, green, lap, dict_weight, dict_bound):
         '''
         Constructor.
         
@@ -38,75 +42,35 @@ class GeoInversion(object):
         self.lap         = lap
         self.dict_weight = dict_weight
         self.dict_bound  = dict_bound
-       
-        self.inversion()
-        return
 
-    def inversion_clean(self):
+    def run_inversion_clean(self):
         """Invert for slip distribution"""
-        
+
         # unpack data
         d_gps         = self.data.d_gps
         d_lev         = self.data.d_lev
         d_sar         = self.data.d_sar
-
-        G             = self.green.G
-        G_sar         = self.green.G_sar
         G_lap         = self.lap.G_lap
-        G_gps_ramp    = self.green.G_gps_ramp
-        G_sar_ramp    = self.green.G_sar_ramp
-
-        wgps          = self.dict_weight['wgps']
-        wsar          = self.dict_weight['wsar']
-        smoothfactor  = self.dict_weight['smoothfactor']
         dict_bound    = self.dict_bound
 
         nf            = self.flt.nf
         nsegs         = self.flt.nsegs
         ndeps         = self.flt.ndeps
-        dis_geom_grid = self.flt.dis_geom_grid
 
-        # weight
-        WSAR  = np.zeros_like(self.data.W_sar)
-        W     = wgps*self.data.W
-        if self.data.W_sar.size > 0:
-            n_sar   = self.data.n_sar
-            offsets = np.cumsum([0] + list(n_sar))
-            for i in range(len(n_sar)):
-                i0, i1 = offsets[i], offsets[i+1]
-                WSAR[i0:i1,i0:i1] = wsar[i]*self.data.W_sar[i0:i1,i0:i1]
+        d2I, d2R      = self.assemble_data_vector(nf)
+
+        # data weight
+        W, WSAR       = self.get_weight()
+        
         # dimensions
         len_geod       = len(d_gps) + len(d_lev)
         len_sar        = len(d_sar)
         len_all        = len_geod + len_sar
-
-        D              = np.hstack([x for x in (d_gps, d_lev) if x.size>0])
-        d_lap          = np.zeros(3 * nf)
-        n_ramp         = G_gps_ramp.shape[1]+G_sar_ramp.shape[1]
-
-        # weighted data vector
-        di_block, dr_block = [], []
-        if len_geod > 0:
-            wd = W @ D
-            di_block.append(wd)
-            dr_block.append(wd)
-
-        if len_sar > 0:
-            ws = WSAR @ d_sar
-            di_block.append(ws)
-            dr_block.append(ws)
-
-        if d_lap.size > 0:
-            di_block.append(d_lap)
-
-        d2I = np.hstack(di_block)
-        d2R = np.hstack(dr_block)
+        n_ramp         = self.green.G_gps_ramp.shape[1]+self.green.G_sar_ramp.shape[1]
 
         # smoothing factors
-        smf1, smf2, step = smoothfactor
-        smo_facts      = np.arange(smf1, smf2, step)
-        nsmooth        = len(smo_facts) if len(smo_facts)>0 else 1
-
+        smo_facts      = self.get_smoothing_factors()
+        nsmooth        = len(smo_facts)
 
         # init parameters
         slip           = np.zeros((nsmooth, 3*nf))
@@ -122,7 +86,7 @@ class GeoInversion(object):
         sar_switch     = 0
 
         if dict_bound['bound_switch']:
-            bu, bl = self.set_bounds(nsegs, ndeps, sar_switch, **dict_bound)
+            bu, bl = self.set_slip_bounds(nsegs, ndeps, sar_switch, **dict_bound)
 
             if n_ramp>0:
                 bl = np.hstack([bl, np.full(n_ramp, -np.inf)])
@@ -135,34 +99,8 @@ class GeoInversion(object):
 
         for i, smo_fact in enumerate(smo_facts):
             logging.info(f'Inversion {i+1} | smoothing factor = {smo_fact}')
-
-            # scale the G_lap
-            G_laps       = smo_fact*G_lap
-            G_blocks1    = []
-            G_blocks2    = []
-            ramp_blocks1 = []
-            ramp_blocks2 = []
-
-            if len_geod > 0:
-                G_blocks1.append(W @ G)
-                G_blocks2.append(G)
-                ramp_blocks1.append(W @ G_gps_ramp)
-                ramp_blocks2.append(G_gps_ramp)
-
-            if len_sar > 0:
-                G_blocks1.append(WSAR @ G_sar)
-                G_blocks2.append(G_sar)
-                ramp_blocks1.append(WSAR @ G_sar_ramp)
-                ramp_blocks2.append(G_sar_ramp)
-
-            G_blocks1.append(G_laps)
-            G2I   = np.vstack(G_blocks1)
-            Gramp = np.vstack([linalg.block_diag(*ramp_blocks1),
-                               np.zeros((G_laps.shape[0], n_ramp))])
-            G2I   = np.column_stack((G2I, Gramp))
-
-            G2R   = np.column_stack((np.vstack(G_blocks2),
-                                     linalg.block_diag(*ramp_blocks2)))
+            
+            G2I, G2R = self.assemble_design_matrix(smo_fact)
             # if constrained linear least square method is used
             if dict_bound['bound_switch']:
                 res     = optimize.lsq_linear(G2I, d2I, (bl, bu), method='bvls', lsmr_tol='auto')
@@ -175,8 +113,7 @@ class GeoInversion(object):
             slip[i] = x[:3*nf]
             ramp[i] = x[3*nf:]
             
-            newG    = np.column_stack([np.vstack(G, G_sar), linalg.block_diag(*ramp_blocks2)])
-            dhat    = newG @ x
+            dhat    = G2R @ x
 
             if len_geod > 0:
                 r[0:len_geod] = d2R[0:len_geod] - W @ dhat[0:len_geod]
@@ -193,11 +130,11 @@ class GeoInversion(object):
                 logging.info('SAR: WRSS/(N) %f' %(misfit_sar[i]/len_sar))
 
             misfit[i]     = r.dot(r)
-            smoothness[i] = np.sum((G_laps @ slip[i])**2)
-            ruff[i]       = np.sum((G_lap @ slip[i])**2)
+            smoothness[i] = sum( (smo_fact*slip[i].dot(G_lap)) * (smo_fact*slip[i].dot(G_lap)) )
+            ruff[i]       = sum( (slip[i].dot(G_lap)) * (slip[i].dot(G_lap)) )
 
             # compute the moment
-            Mo, Mw     = self.Moment(dis_geom_grid, slip[i], shearmodulus)
+            Mo, Mw     = self.flt.moment(slip[i].reshape(-1,3), shear_modulus=shearmodulus)
             moment[i]  = np.array([Mo, Mw])
 
             # print the status
@@ -234,7 +171,6 @@ class GeoInversion(object):
         G_lap         = self.lap.G_lap
         G_gps_ramp    = self.green.G_gps_ramp
         G_sar_ramp    = self.green.G_sar_ramp
-        dis_geom_grid = self.flt.dis_geom_grid
         nsegs         = self.flt.nsegs
         ndeps         = self.flt.ndeps
         smoothfactor  = self.dict_weight['smoothfactor']
@@ -441,7 +377,7 @@ class GeoInversion(object):
     
             # compute the moment
             shearmodulus = self.green.modulus
-            [Mo, Mw]     = self.Moment(dis_geom_grid, slip[i], shearmodulus)
+            [Mo, Mw]     = self.flt.moment(slip[i], shear_modulus=shearmodulus)
             moment[i]    = np.array([Mo, Mw])            
             
             # print the status
@@ -461,221 +397,46 @@ class GeoInversion(object):
         self.smoothness = smoothness
         self.WSAR       = WSAR
         self.ramp       = ramp
+                
+    def assemble_design_matrix(self, smo_fact):
+        """
+        Assemble desgin matrix for inversion.
+        """
+        G              = self.green.G
+        G_sar          = self.green.G_sar
+        G_gps_ramp     = self.green.G_gps_ramp
+        G_sar_ramp     = self.green.G_sar_ramp
+        n_ramp         = G_gps_ramp.shape[1]+G_sar_ramp.shape[1]
 
-            
-    @staticmethod 
-    def Moment(dis_geom_grid, slip, shearmodulus):
-        '''
-        Estimate moment and moment magnitude
-        Mod by Zhao Bin, Apr. 24, 2019. Now 6.067 is used.
-    
-        Input:
-            dis_geom_grid = fault patches
-            slip          = estimated fault slip
-            shearmodulus  = strength of crust    
-            
-        Output:
-            Mo            = total moment in Nm
-            Mw            = moment magnitude
-        
-        '''    
-                
-        area     = dis_geom_grid[:,0] * dis_geom_grid[:,1] * 1e6
-        slip     = slip.reshape(-1,3)
-        slip_mag = np.linalg.norm(slip[:,0:2], axis=1)
-        Mo       = area * slip_mag * shearmodulus
-        Mo_total = np.sum(Mo)/1e3
-        Mw_total = 2.0/3.0*np.log10(Mo_total) - 6.067
+        # scale the G_lap
+        G_laps       = smo_fact*self.lap.G_lap
+        G_blocks1    = []
+        G_blocks2    = []
+        ramp_blocks1 = []
+        ramp_blocks2 = []
 
-        return Mo_total, Mw_total
-                
-    @staticmethod
-    def set_bounds(nsegs, ndeps, sar_switch, **varargin):
-        '''
-        Set bounds for estimated parameters - slip[nsegs*ndeps*3, 3]+sar_plane
-        Written by Zhao Bin @ UC Berkeley April 18, 2016
-        MOD by Zhao Bin, Dec 22, 2016. read lower and upper slip bound from files
-        
-        Input:
-            nsegs       = number of patches along strike direction
-            ndeps       = number of patches along dip direction
-            sar_switch  = 1 if InSAR data, 0 if no InSAR data
-            varargin    = dictionary, containing all parameters
-        Output:
-            bu          = upper bound of parameter
-            bl          = lower bound of parameter
-        '''            
-    
-        nelems    = 3*nsegs*ndeps
-        # if sar_switch == True:
-        #     nelems = nelems + 3
-            
-        # Initialize variables
-        # ss_range_c = 0
-        ss_range   = np.array([0,0])
-        # ds_range_c = 0
-        ds_range   = np.array([0,0])
-        # op_range_c = 0
-        op_range   = np.array([0,0])
-        surf_slip  = np.zeros(3*nsegs)
-        surf_slip_c  = 0
-        s_ss_range   = 0
-        # s_ss_range_c = 0
-        s_ds_range   = 0
-        # s_ds_range_c = 0
-        # s_op_range_c = 0
-        s_op_range   = 0
-        bot_slip     = np.zeros(3*nsegs)
-        bot_slip_c   = 0
-        # b_ss_range_c = 0 
-        # b_ds_range_c = 0 
-        # b_op_range_c = 0
-        bu           = np.zeros(nelems)
-        bl           = np.zeros(nelems)
-        slip_lb      = ''
-        slip_ub      = ''
-                
-        for (k,v) in varargin.items():
-            if k == 'sar_plane_range':
-                splane_range = v
-            elif k == 'ss_range':
-                ss_range = v
-    #           ss_range_c = 1
-            elif k == 'ds_range':
-                ds_range = v
-    #           ds_range_c = 1
-            elif k == 'op_range':
-                op_range = v
-    #           op_range_c = 1
-            elif k == 'surf_slip':
-                surf_slip = v
-                surf_slip_c = 1
-            elif k == 's_ss_range':
-                s_ss_range = v
-    #           s_ss_range_c = 1
-            elif k == 's_ds_range':
-                s_ds_range = v
-    #           s_ds_range_c = 1
-            elif k == 's_op_range':
-                s_op_range = v
-    #           s_op_range_c = 1
-            elif k == 'bot_slip':
-                bot_slip = v
-                bot_slip_c = 1
-            elif k == 'b_ss_range':
-                b_ss_range = v
-    #           b_ss_range_c = 1
-            elif k == 'b_ds_range':
-                b_ds_range = v
-    #           b_ds_range_c = 1
-            elif k == 'b_op_range':
-                b_op_range = v
-    #           b_op_range_c = 1
-            elif k == 'slip_lb':
-                slip_lb = v
-            elif k == 'slip_ub':
-                slip_ub = v
-            
-        for i in range(nelems):
-            # for strike slip component
-            if np.remainder(i,3) == 0:
-                if i <= nsegs*3:
-                    if surf_slip_c == 1:
-                         bu[i] = surf_slip[i]+s_ss_range
-                         bl[i] = surf_slip[i]-s_ss_range
-                         if bu[i] > ss_range[1]:
-                             bu[i] = ss_range[1]
-                         if bl[i] < ss_range[1]:
-                             bl[i] = ss_range[1]
-                    else:
-                         bu[i] = ss_range[1]
-                         bl[i] = ss_range[0]
-                elif i>nsegs*(ndeps-1)*3 & i<=nsegs*ndeps*3:
-                     if (bot_slip_c == 1):
-                         bu[i] = bot_slip[i-nsegs*(ndeps-1)*3] + b_ss_range
-                         bl[i] = bot_slip[i-nsegs*(ndeps-1)*3] - b_ss_range
-                         if bu[i] > ss_range[1]:
-                             bu[i] = ss_range[1]
-                         if bl[i] < ss_range[0]:
-                             bl[i] = ss_range[1]
-                     else:
-                         bu[i] = ss_range[1]
-                         bl[i] = ss_range[0]
-                else:
-                     bu[i] = ss_range[1]
-                     bl[i] = ss_range[0]
-                
-            # for dip slip component
-            if np.remainder(i,3) == 1:
-                 if i <= nsegs*3:
-                     if surf_slip_c == 1:
-                         bu[i] = surf_slip[i]+s_ds_range
-                         bl[i] = surf_slip[i]-s_ds_range
-                         if bu[i] > ds_range[1]:
-                             bu[i] = ds_range[1]
-                         if bl[i] < ds_range[1]:
-                             bl[i] = ds_range[1]
-                     else:
-                         bu[i] = ds_range[1]
-                         bl[i] = ds_range[0]
-                 elif i>nsegs*(ndeps-1)*3 & i<=nsegs*ndeps*3:
-                     if (bot_slip_c == 1):
-                         bu[i] = bot_slip[i-nsegs*(ndeps-1)*3] + b_ds_range
-                         bl[i] = bot_slip[i-nsegs*(ndeps-1)*3] - b_ds_range
-                         if bu[i] > ds_range[1]:
-                             bu[i] = ds_range[1]
-                         if bl[i] < ds_range[0]:
-                             bl[i] = ds_range[1]
-                     else:
-                         bu[i] = ds_range[1]
-                         bl[i] = ds_range[0]
-                 else:
-                     bu[i] = ds_range[1]
-                     bl[i] = ds_range[0]           
-            # openning component uses op_range, s_op_range, b_op_range   
-            if np.remainder(i,3) == 2:
-                 if i <= nsegs*3:
-                     if surf_slip_c == 1:
-                         bu[i] = surf_slip[i]+s_op_range
-                         bl[i] = surf_slip[i]-s_op_range
-                         if bu[i] > op_range[1]:
-                             bu[i] = op_range[1]
-                         if bl[i] < op_range[1]:
-                             bl[i] = op_range[1]
-                     else:
-                         bu[i] = op_range[1]
-                         bl[i] = op_range[0]
-                 elif i>nsegs*(ndeps-1)*3 & i<=nsegs*ndeps*3:
-                     if (bot_slip_c == 1):
-                         bu[i] = bot_slip[i-nsegs*(ndeps-1)*3] + b_op_range
-                         bl[i] = bot_slip[i-nsegs*(ndeps-1)*3] - b_op_range
-                         if bu[i] > op_range[1]:
-                             bu[i] = op_range[1]
-                         if bl[i] < op_range[0]:
-                             bl[i] = op_range[1]
-                     else:
-                         bu[i] = op_range[1]
-                         bl[i] = op_range[0]
-                 else:
-                     bu[i] = op_range[1]
-                     bl[i] = op_range[0]                
-    
-            if i>nsegs*ndeps*3:
-                if len(splane_range) == 0:
-                    logging.warning('A default range of [-1e3, 1e3] for SAR plane is assigned.')
-                    splane_range = [-1e3, 1e3]
-                bu[i] = splane_range[1]
-                bl[i] = splane_range[0]            
-                
-        # added by zhao bin Dec 22, 2016. 
-        # if slip bound files are exist, then overwrite the bound array bu and bl
-        if slip_lb != '' and slip_ub != '':
-            nelems       = 3*nsegs*ndeps
-            bl[0:nelems] = np.genfromtxt(slip_lb, usecols = [7,8,9]).reshape(nelems)
-            bu[0:nelems] = np.genfromtxt(slip_ub, usecols = [7,8,9]).reshape(nelems)
-            logging.info('The lower bound and upper bound of slip are assgined from {} and {}.'.format(slip_lb, slip_ub))
-    
-        return bu, bl 
+        W, WSAR      = self.get_weight()
+        if  G.size > 0:
+            G_blocks1.append(W @ G)
+            G_blocks2.append(G)
+            ramp_blocks1.append(W @ G_gps_ramp)
+            ramp_blocks2.append(G_gps_ramp)
+
+        if G_sar.size > 0:
+            G_blocks1.append(WSAR @ G_sar)
+            G_blocks2.append(G_sar)
+            ramp_blocks1.append(WSAR @ G_sar_ramp)
+            ramp_blocks2.append(G_sar_ramp)
+
+        G_blocks1.append(G_laps)
+        G2I   = np.vstack(G_blocks1)
+        Gramp = np.vstack([linalg.block_diag(*ramp_blocks1),
+                            np.zeros((G_laps.shape[0], n_ramp))])
+        G2I   = np.column_stack((G2I, Gramp))
+
+        G2R   = np.column_stack((np.vstack(G_blocks2),
+                                    linalg.block_diag(*ramp_blocks2)))
+        return G2I, G2R
 
         
 if __name__ == '__main__':

@@ -26,7 +26,7 @@ class Mogi(object):
             dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
         '''
         
-        self.vol = vol
+        self.vol  = vol
         greenfile = dict_green['greenfile']
         if greenfile == "":
             self.GenGreens(vol, data, dict_green)

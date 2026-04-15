@@ -13,6 +13,7 @@ def main():
 
     fltfile = args.faultfile
     flt     = Fault(fltfile, 1, 1, False)
+    flt.load_fault()
     flt.FaultGeom2EDCMP()
 
 if __name__ == '__main__':

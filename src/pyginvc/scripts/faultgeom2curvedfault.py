@@ -1,4 +1,4 @@
-from pyginvc.Geometry.Fault import Fault
+from pyginvc.Geometry.Patch import Fault
 from pyginvc.libs import geotools as gt
 import numpy as np
 import argparse
@@ -28,6 +28,7 @@ def main():
         nsegs, ndeps = get_dim(faultfile)
 
     flt       = Fault(faultfile, nsegs, ndeps, False)
+    flt.load_fault()
     new_dip   = np.linspace(top_dip, bot_dip, ndeps)
     for i in range(ndeps):
         for j in range(nsegs):

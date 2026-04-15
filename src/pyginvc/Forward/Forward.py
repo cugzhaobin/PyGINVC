@@ -3,16 +3,13 @@
 # MOD by Zhao Bin, at UC Berkeley. Dec 4, 2016. Adding greenfile as input parameter for run_forward
 # Mod by Zhao Bin, Dec. 7, 2018. We use print() now.
 # Mod by Zhao Bin, Dec. 7, 2018. We use HDF5 to store green functions and slotions
-from pyginvc.GeoData.GeoData import GeoData
-from pyginvc.Geometry.Fault import Fault
-from pyginvc.Greens.Okada import Okada
-from pyginvc.Inversion.GeoInversion import GeoInversion
-from pyginvc.Export.Output import Output
+from pyginvc.Export import Output
 import logging
+import numpy as np
 logging.basicConfig(
-                    level=logging.INFO,
-                    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
-                    datefmt="%d-%m-%Y %H:%M:%S")
+    level=logging.INFO,
+    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
+    datefmt="%d-%m-%Y %H:%M:%S")
 
 
 class Forward(object):
@@ -20,7 +17,7 @@ class Forward(object):
     Output is a class representing forward surface displacement from slip model
     '''
     
-    def __init__(self, dict_fault, dict_data, dict_green, dict_weight):
+    def __init__(self, fault, data, green, wsar=[1]):
         '''
         Constructor.
         
@@ -30,52 +27,16 @@ class Forward(object):
             green       = an instance of class GreenFunction
             dict_weight = a dict
         '''
+
+        self.fault  = fault
+        self.data   = data
+        self.green  = green
+        self.wsar   = wsar
         
-        #
-        # GeoData
-        #
-        gpsfile = dict_data['gpsfile']
-        sarfile = dict_data['sarfile']
-        levfile = dict_data['levfile']
-        gfiletype = dict_data['gfiletype']
-        self.data = GeoData(gpsfile, sarfile, levfile, gfiletype)
-    
-        #
-        # Fault
-        #
-        faultfile = dict_fault['faultfile']
-        nsegs     = dict_fault['nsegs']
-        ndeps     = dict_fault['ndeps']
-        doSubFault= dict_fault['doSubFault']
-        origin    = dict_fault['origin']
-        self.flt  = Fault(faultfile, nsegs, ndeps, doSubFault, origin=origin)
-
-        #
-        # GreenFunction
-        #
-        self.green = Okada(self.flt, self.data, dict_green)
-        
-        #
-        # Weight
-        self.wsar      = dict_weight['wsar']
-        self.data.wsar = dict_weight['wsar']
-        #
-        
-        #
-        # Do Forward
-        #
-        self.run_forward()
-
-
-
     def run_forward(self):
         '''
         Run forward.
-        '''
-    
-        # import libs
-        from numpy import hstack, vstack
-        
+        '''        
         #
         # Data
         #
@@ -87,14 +48,14 @@ class Forward(object):
         d_gps    = self.data.d_gps.reshape(len_gps)
         d_lev    = self.data.d_lev.reshape(len_lev)
         d_sar    = self.data.d_sar.reshape(len_sar)
-        D        = hstack((d_gps, d_lev, d_sar))
+        D        = np.hstack((d_gps, d_lev, d_sar))
     
         # get fault slip
-        slip      = self.flt.dis_geom_grid[:,7:10].flatten()
+        slip      = self.flt.dis_geom_grid[:,7:10]
     
         # compute the Moment
         shearmodel= 3E10
-        [Mo, Mw]  = GeoInversion.Moment(self.flt.dis_geom_grid, slip, shearmodel) 
+        [Mo, Mw]  = self.flt.moment(slip, shear_module=shearmodel)
     
         # print the status
         logging.info('Geodetic Moment Magnitude M0 = %E' %(Mo))
@@ -104,7 +65,7 @@ class Forward(object):
         # compute the modeled observation
         if len_geod > 0:
             if len_sar > 0:
-                dhat  = vstack((self.green.G, self.green.G_sar[:,0:len(slip)])).dot(slip)
+                dhat  = np.vstack((self.green.G, self.green.G_sar[:,0:len(slip)])).dot(slip)
             else:
                 dhat  = self.green.G.dot(slip)
         else:

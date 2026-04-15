@@ -18,8 +18,6 @@ from pyginvc.Inversion.GeoInversion import GeoInversion
 from pyginvc.Export.Output import Output
 from pyginvc.Export import View
 
-
-
 class SlipInversion:
     '''
     SlipInversion is a class representing slip inversion on rectangular patches from geodetic data.
@@ -41,9 +39,6 @@ class SlipInversion:
             if args.gpsfile is not None: self.cfg['dict_data']['gpsfile']   = args.gpsfile
             if args.lapmethod is not None: self.cfg['dict_data']['lapmethod'] = args.lapmethod
             if args.outpath is not None: self.cfg['dict_data']['outpath']   = args.outpath
-        return
-
-
 
     def run_inv(self):
         '''
@@ -71,6 +66,7 @@ class SlipInversion:
         levfile   = dict_data['levfile']
         gfiletype = dict_data['gfiletype']
         data      = GeoData(gpsfile, sarfile, levfile, gfiletype)
+        data.load_data()
         if 'lapmethod' in dict_data.keys():
             lapmethod = str(dict_data['lapmethod'])
         else:
@@ -85,29 +81,33 @@ class SlipInversion:
         ndeps     = dict_fault['ndeps']
         doSubFault= dict_fault['doSubFault']
         flt       = Fault(faultfile, nsegs, ndeps, doSubFault, origin=[])
+        flt.load_fault()
 
         #
         # GreenFunction
         #
         if dict_green['grnmethod'] == 'wang':
-            from Greens.EDCMP import EDCMP
+            from pyginvc.Greens.EDCMP import EDCMP
             green = EDCMP(flt, data, dict_green)
         elif dict_green['grnmethod'] == 'okada':
             green = Okada(flt, data, dict_green)
         else:
             green = Okada(flt, data, dict_green)
+        green.build_greens()
         
         #
         # Laplacian
         #
         bcs        = dict_green['bcs']
         lap        = RectPlaneLap(flt.nsegs, flt.ndeps, bcs, method=lapmethod)
+        lap.build_laps()
         lap.DumpLap()
 
         #
         # Inversion
         #
         sol        = GeoInversion(flt, data, green, lap, dict_weight, dict_bound)
+        sol.run_inversion_clean()
         
         #
         # Output

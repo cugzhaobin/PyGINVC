@@ -30,7 +30,13 @@ class Meade(BaseGreen):
         '''
         super(Meade, self).__init__(flt, data, dict_green)
 
-    def GenGreens(self, flt, data, dict_green):
+    def build_greens(self):
+        if not self.load_greens():
+            self.generate_greens()
+            self.save_greens()
+        logging.info("Building Green's functions finished.")
+
+    def generate_greens(self):
         '''
         Input:
             flt        = an instance of class Fault
@@ -38,7 +44,7 @@ class Meade(BaseGreen):
             dict_green = a dict containing 'greentype', 'nu', 'bcs', 'greenfile'
 
         '''
-        
+        flt, data, dict_green = self.flt, self.data, self.dict_green
         llh_gps       = data.llh_gps
         llh_lev       = data.llh_lev
         llh_sar       = data.llh_sar

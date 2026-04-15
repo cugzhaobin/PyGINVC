@@ -2,7 +2,7 @@
 # Convert FaultGeom file, output of IDSMODEL/GINVPY to VTK format
 # Rewritten by Zhao Bin, April 12, 2021
 
-from pyginvc.Geometry.Fault import Fault
+from pyginvc.Geometry.Patch import Fault
 import argparse
 
 def main():
@@ -15,6 +15,7 @@ def main():
     origin  = args.origin
     scale   = args.scale
     flt     = Fault(fltfile, 1, 1, False, origin=origin)
+    flt.load_fault()
     flt.FaultGeom2VTK(scale=scale)
 
 if __name__ == '__main__':

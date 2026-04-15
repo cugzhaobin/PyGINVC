@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from pyginvc.Geometry.Fault import Fault
+from pyginvc.Geometry.Patch import Fault
 import argparse
 import numpy as np
 
@@ -101,6 +101,7 @@ def main():
 
     # load the fault file
     flt = Fault(faultfile, nseg, ndep, False)
+    flt.load_fault()
     slip = np.genfromtxt(faultfile, usecols=[7,8,9], comments='#')
     slip = slip.flatten()
     FaultGeom2slip2D(flt.dis_geom_grid, slip, nseg, ndep)
