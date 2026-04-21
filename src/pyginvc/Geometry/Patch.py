@@ -792,7 +792,7 @@ class Fault(object):
         slip  = felem['total_slip'] / felem["total_slip"].max()
         
         if value is not None:
-            slip = value/max(slip)
+            slip = abs(value)/max(abs(value))
     
         if coordtype == 'llh':
             x = felem[['lt_lon', 'rt_lon', 'rb_lon', 'lb_lon']]

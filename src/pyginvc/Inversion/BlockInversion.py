@@ -4,9 +4,9 @@ from scipy import optimize
 from pyginvc.Inversion.BaseInversion import BaseInversion
 
 logging.basicConfig(
-                    level=logging.INFO,
-                    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
-                    datefmt="%d-%M-%Y %H:%M:%S")
+    level=logging.INFO,
+    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
+    datefmt="%d-%M-%Y %H:%M:%S")
 
 class BlockInversion(BaseInversion):
     def __init__(self, data, dict_weight={}, dict_bound={}):
@@ -43,16 +43,15 @@ class BlockInversion(BaseInversion):
 
         G2I, G2R = self.assemble_design_matrix(nblock, G_gps_block)
         x, *_    = np.linalg.lstsq(G2I, d2I, rcond=None)
-        euler    = x
         logging.info('Unconstrained linear least square finished.')
             
-        dhat  = G2R @ x
-        r             = d2R -  W @ dhat
-        misfit        = r.dot(r)
+        dhat     = G2R @ x
+        r        = d2R -  W @ dhat
+        misfit   = r.dot(r)
         logging.info('GPS Weighted Residual Sum of Squares (WRSS) %10.3f' %(misfit))
         logging.info('GPS: WRSS/(N) %f' %(misfit/len_gps))
         
         self.misfit     = misfit
         self.r          = r
         self.dhat       = dhat
-        self.euler      = euler
+        self.euler      = x

@@ -48,7 +48,7 @@ def main():
     elev      = args.elevation
     scale     = args.scale
 
-    flt   = Fault(faultfile, 1, 1, False)
+    flt       = Fault(faultfile, 1, 1, False)
     flt.load_fault()
     flt.plot_faultgeom(afsfile=afsfile, gpsfile=gpsfile, sarfile=sarfile, azimuth=azim, elevation=elev)
 

@@ -8,30 +8,33 @@ logging.basicConfig(
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
                     datefmt="%d-%M-%Y %H:%M:%S")
 
-class BlockBackslipInversion(BaseInversion):
-    def __init__(self, data, fault, green, lap, dict_weight, dict_bound):
+class GenBlockBackslipInversion(BaseInversion):
+    def __init__(self, data, flt_mesh, flt_seg, green_mesh, green_seg, lap_mesh, dict_weight, dict_bound):
         super().__init__(data, dict_weight, dict_bound)
-        self.fault       = fault
-        self.green       = green
-        self.lap         = lap
+        self.flt_mesh       = flt_mesh
+        self.flt_seg        = flt_seg
+        self.green_mesh     = green_mesh
+        self.green_seg      = green_seg
+        self.lap_mesh       = lap_mesh
             
     def assemble_design_matrix(self, nblock, G_gps_block, smo_fact):
         """
         Assemble desgin matrix for inversion.
         """
 
-        nparam     = nblock*3 + self.fault.nf*3
+        nparam     = nblock*3 + self.flt_mesh.nf*3 + self.flt_seg.nf*3
         G_gps_part, G_sar_part = np.empty(0), np.empty(0)
-        if self.green.G.size > 0:
-            G_gps_part = np.column_stack([G_gps_block, -self.green.G])
+        if self.green_mesh.G.size > 0:
+            G_gps_part = np.column_stack([G_gps_block, -self.green_mesh.G, -self.green_seg.G])
         
         # SAR part
-        if self.green.G_sar.size >0:
-            G_sar_part = np.zeros((self.green.G_sar.shape[0], nparam))
-            G_sar_part[:,3*nblock:] = -self.green.G_sar
+        if self.data.d_sar.size > 0:
+            G_sar_part = np.zeros((len(self.data.d_sar), nparam))
+            G_sar_part[:,3*nblock:] = -np.hstack([self.green_mesh.G_sar, self.green_seg.G_sar])
+
         
-        G_lap_part = np.zeros((self.lap.G_lap.shape[0], nparam))
-        G_lap_part[:,3*nblock:] = self.lap.G_lap
+        G_lap_part = np.zeros((self.lap_mesh.G_lap.shape[0], nparam))
+        G_lap_part[:,3*nblock:3*nblock+self.flt_mesh.nf*3] = self.lap_mesh.G_lap
 
         W, WSAR = self.get_weight()
         
@@ -48,14 +51,10 @@ class BlockBackslipInversion(BaseInversion):
 
     def run_inversion(self, nblock, G_gps_block):
 
-        d2I, d2R = self.assemble_data_vector(self.fault.nf)
-        
-        # unpack data
-        dict_bound    = self.dict_bound
+        d2I, d2R = self.assemble_data_vector(self.flt_mesh.nf)
+        nf       = self.flt_mesh.nf + self.flt_seg.nf
 
-        nf            = self.fault.nf
-        nsegs         = self.fault.nsegs
-        ndeps         = self.fault.ndeps
+        dict_bound    = self.dict_bound
 
         # dimensions
         len_gps        = len(self.data.d_gps)
@@ -87,9 +86,9 @@ class BlockBackslipInversion(BaseInversion):
             euler_val = np.genfromtxt(eulerfile)
             bl[:3*nblock] = euler_val-0.001*abs(euler_val)
             bu[:3*nblock] = euler_val+0.001*abs(euler_val)
-        slp_bu, slp_bl = self.set_slip_bounds(nsegs, ndeps, 0, **dict_bound)
-        bl[3*nblock:]  = slp_bl
-        bu[3*nblock:]  = slp_bu
+        slp_bu, slp_bl = self.set_slip_bounds(self.flt_mesh.nsegs, self.flt_mesh.ndeps, 0, **dict_bound)
+        bl[3*nblock:-3*self.flt_seg.nf]  = slp_bl
+        bu[3*nblock:-3*self.flt_seg.nf]  = slp_bu
         
         W, WSAR        = self.get_weight()
 
@@ -128,11 +127,11 @@ class BlockBackslipInversion(BaseInversion):
                 logging.info('SAR: WRSS/(N) %f' %(misfit_sar[i]/len_sar))
 
             misfit[i]     = misfit_gps[i] + misfit_sar[i]
-            lap_slip      = self.lap.G_lap @ slip[i]
+            lap_slip      = self.lap_mesh.G_lap @ slip[i][:self.flt_mesh.nf*3]
             smoothness[i] = np.sum((smo_fact*lap_slip)**2)
             ruff[i]       = np.sum(lap_slip**2)
-            shearmodulus  = self.green.modulus
-            [Mo, Mw]      = self.fault.moment(slip[i].reshape(-1,3), shear_modulus=shearmodulus)
+            shearmodulus  = self.green_mesh.modulus
+            [Mo, Mw]      = self.flt_mesh.moment(slip[i].reshape(-1,3)[:self.flt_mesh.nf], shear_modulus=shearmodulus)
             moment[i]     = np.array([Mo, Mw])
             gps_mod_slip      = G2R[:len_gps, 3*nblock:] @ slip[i]
             gps_mod_rotation  = G2R[:len_gps, :3*nblock] @ euler[i]
