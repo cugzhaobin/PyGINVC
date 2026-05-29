@@ -28,7 +28,7 @@ class Volcano(object):
         self.location_llh = np.empty((0,2))
         self.location_enu = np.empty((0,2))
         self.origin       = origin
-        self.nvol         = len(location)
+        self.nvol         = 0
         self.volumn       = np.empty(0)
 
 
@@ -38,7 +38,7 @@ class Volcano(object):
         # check the file is exit
         isfile = os.path.isfile(volfile)
         if (isfile == False):
-           logging.warning ('{} is not exist! Please input another file!'.format(vertexfile))
+           logging.warning ('{} is not exist! Please input another file!'.format(volfile))
            sys.exit()
      
         # read in location of volcanos

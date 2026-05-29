@@ -28,7 +28,7 @@ class Forward(object):
             dict_weight = a dict
         '''
 
-        self.fault  = fault
+        self.flt  = fault
         self.data   = data
         self.green  = green
         self.wsar   = wsar
@@ -55,7 +55,7 @@ class Forward(object):
     
         # compute the Moment
         shearmodel= 3E10
-        [Mo, Mw]  = self.flt.moment(slip, shear_module=shearmodel)
+        [Mo, Mw]  = self.flt.moment(slip, shear_modulus=shearmodel)
     
         # print the status
         logging.info('Geodetic Moment Magnitude M0 = %E' %(Mo))

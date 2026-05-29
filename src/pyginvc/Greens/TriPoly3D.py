@@ -143,7 +143,7 @@ class TriPoly3D(BaseGreen):
                 if gdim == 3:
                     G[:,3*i] = disp.flatten()
                 elif gdim == 2:
-                    G[:,3*i] = disp[:[0,1]].flatten()
+                    G[:,3*i] = disp[:, [0, 1]].flatten()
             # dip slip
             if ds == 1:
                 bc = np.array([[-1,0,0]])
@@ -153,7 +153,7 @@ class TriPoly3D(BaseGreen):
                 if gdim == 3:
                     G[:,3*i+1] = disp.flatten()
                 elif gdim == 2:
-                    G[:,3*i+1] = disp[:[0,1]].flatten()
+                    G[:,3*i+1] = disp[:, [0, 1]].flatten()
             # open slip
             if op == 1:
                 bc = np.array([[0,0,1]])
@@ -163,7 +163,7 @@ class TriPoly3D(BaseGreen):
                 if gdim == 3:
                     G[:,3*i+2] = disp.flatten()
                 elif gdim == 2:
-                    G[:,3*i+2] = disp[:[0,1]].flatten()
+                    G[:,3*i+2] = disp[:, [0, 1]].flatten()
     
         return G
     
@@ -206,7 +206,7 @@ class TriPoly3D(BaseGreen):
             unit  = -1.0*unit
             
         # init Green function G
-        G = np.zeros(nsta, 3*nelem)
+        G = np.zeros((nsta, 3*nelem))
     
         # for each element
         for i in range(nelem):

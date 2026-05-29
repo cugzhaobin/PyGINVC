@@ -49,7 +49,7 @@ class BaseInversion:
         wsar  = self.dict_weight['wsar']
         if self.data.cov_sar.ndim == 1:
             cov_sar = np.diag(self.data.cov_sar)
-        elif self.sar.cov_sar.ndim == 2:
+        elif self.data.cov_sar.ndim == 2:
             cov_sar = self.data.cov_sar
     
         WSAR  = np.zeros_like(cov_sar)
@@ -230,7 +230,7 @@ class BaseInversion:
                     else:
                          bu[i] = ss_range[1]
                          bl[i] = ss_range[0]
-                elif i>nsegs*(ndeps-1)*3 & i<=nsegs*ndeps*3:
+                elif i>nsegs*(ndeps-1)*3 and i<=nsegs*ndeps*3:
                      if (bot_slip_c == 1):
                          bu[i] = bot_slip[i-nsegs*(ndeps-1)*3] + b_ss_range
                          bl[i] = bot_slip[i-nsegs*(ndeps-1)*3] - b_ss_range
@@ -258,7 +258,7 @@ class BaseInversion:
                      else:
                          bu[i] = ds_range[1]
                          bl[i] = ds_range[0]
-                 elif i>nsegs*(ndeps-1)*3 & i<=nsegs*ndeps*3:
+                 elif i>nsegs*(ndeps-1)*3 and i<=nsegs*ndeps*3:
                      if (bot_slip_c == 1):
                          bu[i] = bot_slip[i-nsegs*(ndeps-1)*3] + b_ds_range
                          bl[i] = bot_slip[i-nsegs*(ndeps-1)*3] - b_ds_range
@@ -285,7 +285,7 @@ class BaseInversion:
                      else:
                          bu[i] = op_range[1]
                          bl[i] = op_range[0]
-                 elif i>nsegs*(ndeps-1)*3 & i<=nsegs*ndeps*3:
+                 elif i>nsegs*(ndeps-1)*3 and i<=nsegs*ndeps*3:
                      if (bot_slip_c == 1):
                          bu[i] = bot_slip[i-nsegs*(ndeps-1)*3] + b_op_range
                          bl[i] = bot_slip[i-nsegs*(ndeps-1)*3] - b_op_range

@@ -109,28 +109,21 @@ class LEVData(object):
                 
                 
         # Form inverse of the covariance matrix
-        Icov   = np.tranpose(W)*W
-        rcov0  = np.invert(Icov)
-        rcov1  = np.array([])
-        
-        for i in range(0, len(d)-1):
-            rcov1[i,0] = 0.0
-            rcov1[0,i] = 0.0
-            
-            for j in range(0, len(d)-1):
-                rcov1[i+1,j+1] = rcov1[i,j]
-                
-                
+        Icov   = np.transpose(W)*W
+        rcov0  = np.linalg.inv(Icov)
+        rcov1  = np.zeros((len(d), len(d)))
+        rcov1[1:, 1:] = rcov0
+
         # Use root-mean-square error in absolute vertical heights of 1.0mm/yr
         sigv  =  0.000158
-        
+
         for i in range(0, len(d)):
-            rcov1[i,0] = rcov1[i,i] + sigv**2
-            
-        Icov  = np.invert(rcov1)
+            rcov1[i,i] = rcov1[i,i] + sigv**2
+
+        Icov  = np.linalg.inv(rcov1)
         sigma = np.sqrt(np.diag(rcov1))
-        Len   = np.hstack([0, Len])        
-        W     = np.linglg.cholesky(np.mat(Icov))
+        Len   = np.hstack([0, Len])
+        W     = np.linalg.cholesky(np.mat(Icov))
     
     
         # print the status

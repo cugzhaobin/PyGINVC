@@ -217,7 +217,7 @@ class Mogi(object):
     
         e = xy[:,0] - volgeom[0]
         n = xy[:,1] - volgeom[1]
-        r = np.sqrt(e**2, n**2)
+        r = np.sqrt(e**2 + n**2)
         d = volgeom[2]
 
         prefactor = (1-nu)*1e3/(np.pi*d**2)

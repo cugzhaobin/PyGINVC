@@ -285,9 +285,9 @@ class TriInversion(BaseInversion):
 #             else:
 #                 G2I        = vstack((W.dot(G), G_laps))
 
-            if len(G) == 0:
+            if G.size == 0:
                 G = G.reshape(-1,3*nf)
-            if len(G_sar) == 0:
+            if G_sar.size == 0:
                 G_sar = G_sar.reshape(-1,3*nf)
             WG     = W@G
             WG_sar = WSAR @ G_sar
