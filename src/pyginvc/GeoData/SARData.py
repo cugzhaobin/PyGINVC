@@ -65,7 +65,8 @@ class SARData(object):
         #
         filename = self.sarfile
         if not os.path.exists(filename):
-            logging.fatal(f'SAR file {filename} does not exit.')
+            if filename:
+                logging.warning(f'SAR file {filename} does not exit.')
             return
         [llh_sar, d_sar, unit] = self.GetSARdata(filename)
         self.llh_sar  = llh_sar

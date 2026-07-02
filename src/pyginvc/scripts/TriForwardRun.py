@@ -34,7 +34,6 @@ class DispForward:
             lines = fid.read()
             cfg   = yaml.load(lines, Loader=yaml.FullLoader)
             self.cfg = cfg
-        return
 
     def run_fwd(self):
         keys = ['dict_data', 'dict_fault', 'dict_green', 'dict_weight', 'dict_bound', 'dict_export']
@@ -73,13 +72,13 @@ class DispForward:
         #
         if dict_green['grnmethod'] == 'meade':
             from pyginvc.Greens.Meade import Meade
-            green = Meade(self.flt, self.data, dict_green)
+            green = Meade(fault, data, dict_green)
         elif dict_green['grnmethod'] == 'nikkhoo':
             from pyginvc.Greens.Nikkhoo import Nikkhoo
-            green = Nikkhoo(self.flt, self.data, dict_green)
+            green = Nikkhoo(fault, data, dict_green)
         elif dict_green['grnmethod'] == 'poly3d':
             from pyginvc.Greens.TriPoly3D import TriPoly3D
-            green = TriPoly3D(self.flt, self.data, dict_green)
+            green = TriPoly3D(fault, data, dict_green)
         green.build_greens()
 
         fwd = TriForward(fault, data, green)
@@ -89,7 +88,7 @@ class DispForward:
         # Output
         #
         outpath    = dict_export['outpath']
-        out        = Output(fwd.flt, fwd.data, fwd.green, sol=fwd, archdir=outpath)
+        out        = Output(fwd.fault, fwd.data, fwd.green, sol=fwd, archdir=outpath)
         out.OutputSolution()
         out.archive_outfile()
 

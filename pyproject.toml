@@ -21,6 +21,7 @@ dependencies = [
     "matplotlib",
     "pyproj",
     "h5py",
+    "streamlit>=1.30",
 #   "logging",
 #   "emcee",
 ]
@@ -58,6 +59,7 @@ dependencies = [
 "trimesh2info.py" = "pyginvc.scripts.trimesh2info:main"
 "trimesh2moment.py" = "pyginvc.scripts.trimesh2moment:main"
 "VolForwardRun.py" = "pyginvc.scripts.VolForwardRun:main"
+"pyginvc-gui" = "pyginvc.gui.app:main"
 
 
 [tool.pytest.ini_options]

@@ -64,13 +64,13 @@ class Triangle(object):
         if len(self.origin) != 2:
             lat0   = np.mean(vertex_llh[:,0])
             lon0   = np.mean(vertex_llh[:,1])
-            origin = np.array([lat0, lon0])
+            self.origin = np.array([lat0, lon0])
         
         # convert geophysical coordinate into local coordinate
         vertex_enu = np.zeros((len(vertex_llh),3))
         for i in range(len(vertex_llh)):
 #           en = gt.llh2localxy(vertex_llh[i,0:2], origin)
-            en = gt.llh2utm(vertex_llh[i,0:2], origin)
+            en = gt.llh2utm(vertex_llh[i,0:2], self.origin)
             vertex_enu[i,:] = np.array([en[0], en[1], vertex_llh[i,2]])
 
         # IMPORTANT: ENFORCE CLOCKWISE CIRCULATION.
@@ -85,7 +85,6 @@ class Triangle(object):
         self.vertex_enu = vertex_enu
         self.vertex_llh = vertex_llh
         self.element    = element
-        self.origin     = origin
         self.nf         = len(element)
         self.slip       = slip
         self.rake       = np.rad2deg(np.arctan2(self.slip[:,1], self.slip[:,0]))
@@ -108,7 +107,7 @@ class Triangle(object):
         vec2    = v3 - v1
         cross   = np.cross(vec1, vec2)
         area    = 0.5 * np.linalg.norm(cross, axis=1)
-        tslip   = np.linalg.norm(slip, axis=1)
+        tslip   = np.linalg.norm(slip)
         Mo      = 1e6 * area * tslip * shear_modulus
         Mo_total  = np.sum(Mo)/1000.0
         Mw_total  = 2.0/3.0*np.log10(Mo_total) - 6.067

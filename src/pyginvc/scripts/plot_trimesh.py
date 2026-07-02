@@ -40,6 +40,7 @@ def main():
 
     # read in vertex and elements
     tri         = Triangle(vertexfile, elementfile)
+    tri.load_fault()
     vertex_llh  = tri.vertex_llh
     element     = tri.element
 

@@ -3,3 +3,4 @@ scipy
 matplotlib
 pyproj
 h5py
+streamlit>=1.30

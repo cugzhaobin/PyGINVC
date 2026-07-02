@@ -3,7 +3,7 @@
 import numpy as np
 import logging, h5py
 import os, time, glob
-from pandas import pandas as pd
+import pandas as pd
 from numpy import column_stack, hstack, vstack, transpose
 from pyginvc.Geometry.Triangle import Triangle
 from pyginvc.Forward.Forward import Forward
@@ -93,7 +93,8 @@ class Output(object):
                 grp.create_dataset(key, data=data, compression='gzip')
 
         # output ascii files
-        if isinstance(self.sol, Forward):
+        from pyginvc.Forward.TriForward import TriForward
+        if isinstance(self.sol, (Forward, TriForward)):
             self.WriteData()
             self.archive_outfile()
         else:
@@ -611,12 +612,20 @@ class Output(object):
     def archive_outfile(self):
         '''
         '''
+        import shutil
         dirname = self.archdir
         if dirname == "":
             logging.error('This input archive directory is null')
             self.dirname = 'test'
         if os.path.exists(dirname) == False:
             os.mkdir(dirname)
+
+        # Skip if archdir is the same as current directory
+        abs_dirname = os.path.abspath(dirname)
+        abs_cwd = os.path.abspath(os.getcwd())
+        if abs_dirname == abs_cwd:
+            logging.info('Archive directory is current directory, skipping file move.')
+            return
 
         # GPS
         if len(self.data.llh_gps) > 0:

@@ -112,7 +112,9 @@ class GeoData:
                 logging.info(f"Loading SAR file {sarfile}: {e}")
         for levfile in levfiles:
             try:
-                lev_data.append(LEVData(levfile))
+                lev = LEVData(levfile)
+                lev.load()
+                lev_data.append(lev)
             except Exception as e:
                 logging.info(f"Loading LEV file {levfile}: {e}")
 

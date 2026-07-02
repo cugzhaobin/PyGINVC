@@ -23,7 +23,12 @@ class LEVData(object):
         Input:
             levfile     = Level file name
         '''
-        self.LoadLEVData(levfile)
+        self.levfile = levfile
+        self.llh_lev = np.empty((0,2))
+        self.d_lev   = np.empty(0)
+
+    def load(self):
+        self.LoadLEVData(self.levfile)
         return
 
 

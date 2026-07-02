@@ -5,7 +5,7 @@
 # Mod by Zhao Bin, Dec. 7, 2018. We use HDF5 to store green functions and slotions
 import numpy as np
 import logging
-from pyginvc.Export import Output
+from pyginvc.Export.Output import Output
 logging.basicConfig(level=logging.INFO)
 
 class TriForward(object):
@@ -27,7 +27,8 @@ class TriForward(object):
         self.fault = fault
         self.data  = data
         self.green = green
-        self.wsar  = wsar
+        self.wsar  = np.atleast_1d(wsar)
+        self.WSAR  = self.wsar  # for compatibility with Output.Write_SAR_Data
 
 
     def run_forward(self):
@@ -48,11 +49,11 @@ class TriForward(object):
         D        = np.hstack((d_gps, d_lev, d_sar))
     
         # get fault slip
-        slip     = self.flt.slip.flatten()
+        slip     = self.fault.slip.flatten()
     
         # compute the Moment
         shearmodulus = self.green.modulus
-        [Mo, Mw]     = self.flt.moment(slip, shear_modulus=shearmodulus)
+        [Mo, Mw]     = self.fault.moment(slip, shear_modulus=shearmodulus)
     
         # print the status
         logging.info('Geodetic Moment Magnitude M0 = %E' %(Mo))
@@ -80,7 +81,12 @@ class TriForward(object):
             
         # if we have GPS data
         if len_gps > 0:
-            r_gps        = self.data.W.dot(D[0:len_gps] - dhat[0:len_gps])
+            cov_gps = self.data.cov_gps
+            if cov_gps.ndim == 1:
+                w_gps = 1.0 / cov_gps
+            else:
+                w_gps = 1.0 / np.diag(cov_gps)
+            r_gps        = w_gps * (D[0:len_gps] - dhat[0:len_gps])
             # print the status
             logging.info('GPS Weighted Residual Sum of Squares (WRSS) = %f' %(r_gps.dot(r_gps)))
             logging.info('GPS WRSS / (N) = %f ' %(r_gps.dot(r_gps)/(len_gps)))
@@ -97,5 +103,5 @@ class TriForward(object):
         self.slip = slip.reshape(len(slip),1)
         self.misfit = np.empty(0)
         # output the modeled observation
-        out = Output(self.flt, self.data, self.green)
+        out = Output(self.fault, self.data, self.green)
         out.WriteData(dhat, r)

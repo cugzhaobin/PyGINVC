@@ -71,7 +71,11 @@ class GPSData(object):
         logging.info(f'{self.nsta} GPS stations in {gfiletype} format are loaded.')
 
     def build_weight(self):
-        self.W_gps = 1/self.cov_gps
+        cov = self.cov_gps
+        if cov.ndim == 1:
+            self.W_gps = 1.0 / cov
+        else:
+            self.W_gps = 1.0 / np.diag(cov)
 
     @staticmethod
     def GetGMTdata(filename, scale=1.0):

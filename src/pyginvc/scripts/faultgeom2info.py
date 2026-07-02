@@ -5,6 +5,7 @@
 
 from pyginvc.Geometry.Patch import Fault
 import argparse
+import pandas as pd
 
 def main():
     parser = argparse.ArgumentParser(description="Convert FaultGeom file to Coulomb input file.")
@@ -41,7 +42,7 @@ def main():
                     flt.bot_right_neu[i,0], flt.bot_right_neu[i,1], flt.bot_right_neu[i,2],
                     flt.bot_left_neu[i,0], flt.bot_left_neu[i,1], flt.bot_left_neu[i,2],
                     ))"""
-        with felem.option_context('display.max_rows', None, 'display.max_coulmns', None):
+        with pd.option_context('display.max_rows', None, 'display.max_columns', None):
             print(felem)
     elif display == 'simple' or display == 'SIMPLE':
         """
@@ -54,9 +55,9 @@ def main():
                     (flt.top_left_llh[i,1]+flt.top_right_llh[i,1])/2,
                     (flt.top_left_llh[i,2]+flt.top_right_llh[i,2])/2,
                     ))"""
-        selected_df = felem(["length", "width", "strike", "dip", "rake", "strike_slip", "dip_slip", "tensile_slip", "total_slip", 
-        "lt_lat", "lt_lon", "lt_dep", "rt_lat","rt_lon","rt_dep"])
-        with selected_df.option_context('display.max_rows', None, 'display.max_coulmns', None):
+        selected_df = felem[["length", "width", "strike", "dip", "rake", "strike_slip", "dip_slip", "tensile_slip", "total_slip",
+        "lt_lat", "lt_lon", "lt_dep", "rt_lat","rt_lon","rt_dep"]]
+        with pd.option_context('display.max_rows', None, 'display.max_columns', None):
             print(selected_df)
 
 if __name__ == '__main__':
