@@ -17,8 +17,9 @@ def main():
     element      = args.element
     shearmodulus = args.shear_modulus
     flt          = Triangle(vertex, element)
+    flt.load_fault()
     Mo, Mw       = flt.moment(flt.slip, shear_modulus=shearmodulus)
-    print(Mo, Mw)
+    print(f'Mo={Mo:6.3e} Nm, Mw={Mw:.2f}')
 
 if __name__ == '__main__':
     main()

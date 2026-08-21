@@ -60,7 +60,11 @@ class BaseInversion:
                 WSAR[idx0:idx1,idx0:idx1] = wsar[i]*self.data.W_sar[idx0:idx1,idx0:idx1]
         
         cov_gps = self.data.cov_gps
-        WGPS    = np.diag(1/np.sqrt(cov_gps))
+        if cov_gps.ndim == 1:
+            var_gps = cov_gps
+        else:
+            var_gps = np.diag(cov_gps)
+        WGPS    = np.diag(1/np.sqrt(var_gps))
         return WGPS, WSAR
 
     def assemble_data_vector(self, nfault: int):

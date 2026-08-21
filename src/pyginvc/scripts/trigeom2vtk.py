@@ -15,7 +15,8 @@ def main():
     element = args.element
     origin  = args.origin
     flt     = Triangle(vertex, element, origin=origin)
-    flt.Triangle2VTK()
+    flt.load_fault()
+    flt.Triangle2VTK('coseismic.vtp')
 
 if __name__ == '__main__':
     main()

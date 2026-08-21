@@ -88,6 +88,7 @@ class Triangle(object):
         self.nf         = len(element)
         self.slip       = slip
         self.rake       = np.rad2deg(np.arctan2(self.slip[:,1], self.slip[:,0]))
+        print(self.nf)
 
 
     def moment(self, slip, shear_modulus=3e10):
