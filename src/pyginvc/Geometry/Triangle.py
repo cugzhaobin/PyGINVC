@@ -108,7 +108,7 @@ class Triangle(object):
         vec2    = v3 - v1
         cross   = np.cross(vec1, vec2)
         area    = 0.5 * np.linalg.norm(cross, axis=1)
-        tslip   = np.linalg.norm(slip)
+        tslip   = np.linalg.norm(slip, axis=1)
         Mo      = 1e6 * area * tslip * shear_modulus
         Mo_total  = np.sum(Mo)/1000.0
         Mw_total  = 2.0/3.0*np.log10(Mo_total) - 6.067
