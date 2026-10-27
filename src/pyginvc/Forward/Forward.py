@@ -3,7 +3,7 @@
 # MOD by Zhao Bin, at UC Berkeley. Dec 4, 2016. Adding greenfile as input parameter for run_forward
 # Mod by Zhao Bin, Dec. 7, 2018. We use print() now.
 # Mod by Zhao Bin, Dec. 7, 2018. We use HDF5 to store green functions and slotions
-from pyginvc.Export import Output
+from pyginvc.Export.Output import Output
 import logging
 import numpy as np
 logging.basicConfig(
@@ -52,7 +52,9 @@ class Forward(object):
     
         # get fault slip
         slip      = self.flt.dis_geom_grid[:,7:10]
-    
+        # Green's functions are built for a flat parameter vector (nf*3,)
+        slip_vec  = slip.reshape(-1)
+
         # compute the Moment
         shearmodel= 3E10
         [Mo, Mw]  = self.flt.moment(slip, shear_modulus=shearmodel)
@@ -65,12 +67,12 @@ class Forward(object):
         # compute the modeled observation
         if len_geod > 0:
             if len_sar > 0:
-                dhat  = np.vstack((self.green.G, self.green.G_sar[:,0:len(slip)])).dot(slip)
+                dhat  = np.vstack((self.green.G, self.green.G_sar[:,0:len(slip_vec)])).dot(slip_vec)
             else:
-                dhat  = self.green.G.dot(slip)
+                dhat  = self.green.G.dot(slip_vec)
         else:
             if len_sar > 0:
-                dhat  = self.green.G_sar[:,0:len(slip)].dot(slip) 
+                dhat  = self.green.G_sar[:,0:len(slip_vec)].dot(slip_vec)
         r         = D - dhat
     
         # if we have SAR data
@@ -83,14 +85,17 @@ class Forward(object):
             
         # if we have GPS data
         if len_gps > 0:
-            r_gps        = self.data.W.dot(D[0:len_gps] - dhat[0:len_gps])
+            cov_gps      = self.data.cov_gps
+            var_gps      = cov_gps if cov_gps.ndim == 1 else np.diag(cov_gps)
+            W_gps        = np.diag(1.0/np.sqrt(var_gps))
+            r_gps        = W_gps.dot(D[0:len_gps] - dhat[0:len_gps])
             # print the status
             logging.info('GPS Weighted Residual Sum of Squares (WRSS) = %f' %(r_gps.dot(r_gps)))
             logging.info('GPS WRSS / (N) = %f ' %(r_gps.dot(r_gps)/(len_gps)))
-    
+
         # if we have LEV data
         if len_lev > 0:
-            r_lev        = self.data.W.dot(D[len_gps:len_geod] - dhat[len_gps:len_geod])
+            r_lev        = D[len_gps:len_geod] - dhat[len_gps:len_geod]
             # print the status
             logging.info('LEV Weighted Residual Sum of Squares (WRSS) = %f' %(r_lev.dot(r_lev)))
             logging.info('LEV WRSS / (N) = %f ' %(r_lev.dot(r_lev)/(len_lev)))

@@ -70,7 +70,6 @@ class BlockBackslipInversion(BaseInversion):
         # init parameters
         slip           = np.zeros((nsmooth, 3*nf))
         sig_slip       = np.zeros((nsmooth, 3*nf))
-        r              = np.zeros(len_all)
         misfit         = np.zeros(nsmooth)
         misfit_sar     = np.zeros(nsmooth)
         misfit_gps     = np.zeros(nsmooth)
@@ -80,10 +79,26 @@ class BlockBackslipInversion(BaseInversion):
         euler          = np.zeros((nsmooth,3*nblock))
 
         nparam         = nblock*3 + nf*3
+
+        # Per-smoothing-factor results.  These used to be single arrays that the
+        # loop overwrote, so only the LAST smoothing factor's answer survived on
+        # the object -- useless for a smoothing search or any per-iteration
+        # comparison.  Index with [-1] to get the last one, as before.
+        x_all            = np.zeros((nsmooth, nparam))
+        r                = np.zeros((nsmooth, len_all))
+        dhat_all         = np.zeros((nsmooth, len_all))
+        gps_mod_slip     = np.zeros((nsmooth, len_gps))
+        gps_mod_rotation = np.zeros((nsmooth, len_gps))
+        sar_mod_slip     = np.zeros((nsmooth, len_sar))
+        sar_mod_rotation = np.zeros((nsmooth, len_sar))
+        status           = np.zeros(nsmooth, dtype=int)
         bu             = np.full(nparam, np.inf)
         bl             = np.full(nparam,-np.inf)
-        if 'euler_range' in dict_bound:
-            eulerfile = dict_bound['euler_range']
+        # Falsy (absent, '' or None) means "leave omega free".  Testing for the
+        # key with `in` instead made an empty string reach np.genfromtxt(''),
+        # so the only way to turn the constraint off was to delete the key.
+        eulerfile = dict_bound.get('euler_range')
+        if eulerfile:
             euler_val = np.genfromtxt(eulerfile)
             bl[:3*nblock] = euler_val-0.001*abs(euler_val)
             bu[:3*nblock] = euler_val+0.001*abs(euler_val)
@@ -101,29 +116,40 @@ class BlockBackslipInversion(BaseInversion):
 
             # if constrained linear least square method is used
             if dict_bound['bound_switch']:
-                res     = optimize.lsq_linear(G2I, d2I, (bl, bu), method='bvls', lsmr_tol='auto')
-                x       = res.x
-                logging.info('Constrained linear least square finished.')
+                res       = optimize.lsq_linear(G2I, d2I, (bl, bu), method='bvls', lsmr_tol='auto')
+                x         = res.x
+                status[i] = res.status
+                if res.status not in (1, 2):
+                    logging.warning('BVLS did not converge at smoothing factor %g: '
+                                    'status=%d (%s).  status 0 = iteration limit, '
+                                    '-1 = no progress; the result below is NOT a '
+                                    'converged optimum.',
+                                    smo_fact, res.status, getattr(res, 'message', ''))
+                else:
+                    logging.info('Constrained linear least square finished (status=%d).',
+                                 res.status)
             else:
-                x, *_   = np.linalg.lstsq(G2I, d2I, rcond=None)
+                x, *_     = np.linalg.lstsq(G2I, d2I, rcond=None)
+                status[i] = 0
                 logging.info('Unconstrained linear least square finished.')
 
             slip[i]  = x[3*nblock:]
             euler[i] = x[:3*nblock]
-            
-            
-            dhat  = G @ x
+            x_all[i] = x
+
+            dhat        = G @ x
+            dhat_all[i] = dhat
             if len_geod > 0:
-                r[0:len_geod] = d2R[:len_geod] -  W @ dhat[:len_geod]
-                r_gps         = r[:len_geod]
-                misfit_gps[i] = r_gps.dot(r_gps)
+                r[i, 0:len_geod] = d2R[:len_geod] -  W @ dhat[:len_geod]
+                r_gps            = r[i, :len_geod]
+                misfit_gps[i]    = r_gps.dot(r_gps)
                 logging.info('GPS Weighted Residual Sum of Squares (WRSS) %10.3f' %(misfit_gps[i]))
                 logging.info('GPS: WRSS/(N) %f' %(misfit_gps[i]/len_gps))
 
             if len_sar > 0:
-                r[len_geod:]  = d2R[len_geod:] -  WSAR @ dhat[len_geod:]
-                r_sar         = r[len_geod:]
-                misfit_sar[i] = r_sar.dot(r_sar)
+                r[i, len_geod:] = d2R[len_geod:] -  WSAR @ dhat[len_geod:]
+                r_sar           = r[i, len_geod:]
+                misfit_sar[i]   = r_sar.dot(r_sar)
                 logging.info('SAR Weighted Residual Sum of Squares (WRSS) %10.3f' %(misfit_sar[i]))
                 logging.info('SAR: WRSS/(N) %f' %(misfit_sar[i]/len_sar))
 
@@ -134,14 +160,14 @@ class BlockBackslipInversion(BaseInversion):
             shearmodulus  = self.green.modulus
             [Mo, Mw]      = self.fault.moment(slip[i].reshape(-1,3), shear_modulus=shearmodulus)
             moment[i]     = np.array([Mo, Mw])
-            gps_mod_slip      = G2R[:len_gps, 3*nblock:] @ slip[i]
-            gps_mod_rotation  = G2R[:len_gps, :3*nblock] @ euler[i]
+            # decompose the model with the unweighted G (G2R is W @ G, so using it
+            # here would return the weighted model instead of a displacement in mm/yr)
+            gps_mod_slip[i]     = G[:len_gps, 3*nblock:] @ slip[i]
+            gps_mod_rotation[i] = G[:len_gps, :3*nblock] @ euler[i]
             if len_sar>0:
-                sar_mod_slip      = G2R[len_geod:, 3*nblock] @ slip[i]
-                sar_mod_rotation  = G2R[len_geod:,:3*nblock] @ x[:3*nblock]
-            else:
-                sar_mod_slip, sar_mod_rotation = np.array([]), np.array([])
-        
+                sar_mod_slip[i]     = G[len_geod:, 3*nblock:] @ slip[i]
+                sar_mod_rotation[i] = G[len_geod:, :3*nblock] @ euler[i]
+
         self.ruff       = ruff
         self.misfit_gps = misfit_gps
         self.misfit_sar = misfit_sar
@@ -149,12 +175,13 @@ class BlockBackslipInversion(BaseInversion):
         self.slip       = slip
         self.sig_slip   = sig_slip
         self.r          = r
-        self.dhat       = dhat
+        self.dhat       = dhat_all
         self.smo_facts  = smo_facts
         self.smoothness = smoothness
         self.WSAR       = WSAR
         self.euler      = euler
-        self.x          = x
+        self.x          = x_all
+        self.status     = status
         self.gps_mod_slip     = gps_mod_slip
         self.gps_mod_rotation = gps_mod_rotation
         self.sar_mod_slip     = sar_mod_slip

@@ -15,6 +15,7 @@ def main():
     coordtype   = args.coordtype
 
     tri = Triangle(vertexfile, elementfile)
+    tri.load_fault()
     v  = tri.element-1
 
     with open('ds_slip.gmtlin', 'w') as fid:

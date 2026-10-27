@@ -21,10 +21,12 @@ class DispForward:
     '''
     DispForward is a class representing forward calculation of surface displacements
     '''
-    def __init__(self, cfgfile):
+    def __init__(self, cfgfile, args=None):
         '''
         Input:
-            cfgfile = YAML format configure file for slip inversion
+            cfgfile = YAML format configure file for forward modelling
+            args    = parsed command line arguments; when given, they override
+                      the corresponding entries in cfgfile
         '''
         if os.path.isfile(cfgfile) is False:
             logging.warning('Input configure file {} does not exist'.format(cfgfile))
@@ -34,7 +36,26 @@ class DispForward:
             lines = fid.read()
             cfg   = yaml.load(lines, Loader=yaml.FullLoader)
             self.cfg = cfg
+        self._apply_overrides(args)
         return
+
+    def _set(self, section, key, value):
+        node = self.cfg.get(section)
+        if not isinstance(node, dict):
+            node = {}
+            self.cfg[section] = node
+        node[key] = value
+
+    def _apply_overrides(self, args):
+        '''Command line options win over the configure file.'''
+        if args is None:
+            return
+        if args.faultfile:
+            self._set('dict_fault', 'faultfile', args.faultfile)
+        if args.gpsfile:
+            self._set('dict_data', 'gpsfile', args.gpsfile)
+        if args.sarfile:
+            self._set('dict_data', 'sarfile', args.sarfile)
 
     def run_fwd(self):
         keys = ['dict_data', 'dict_fault', 'dict_green', 'dict_weight', 'dict_bound', 'dict_export']
@@ -73,13 +94,13 @@ class DispForward:
         #
         # GreenFunction
         #
-        green = Okada(self.flt, self.data, dict_green)
+        green = Okada(flt, data, dict_green)
         green.build_greens()
-        
+
         #
         # Weight
-        self.wsar      = dict_weight['wsar']
-        self.data.wsar = dict_weight['wsar']
+        self.wsar = dict_weight['wsar']
+        data.wsar = dict_weight['wsar']
 
         fwd = Forward(flt, data, green)
         fwd.run_forward()
@@ -87,10 +108,16 @@ class DispForward:
 def main():
     parser = argparse.ArgumentParser(description="Forward modelling of surface displacements from rectangular dislocation model.")
     parser.add_argument('--cfgfile', type=str, required=True, help='')
-    
+    parser.add_argument('--faultfile', type=str, default='',
+                        help='override dict_fault.faultfile')
+    parser.add_argument('--gpsfile', type=str, default='',
+                        help='override dict_data.gpsfile')
+    parser.add_argument('--sarfile', type=str, default='',
+                        help='override dict_data.sarfile')
+
     args    = parser.parse_args()
     cfgfile = args.cfgfile
-    slipinv = DispForward(cfgfile)
+    slipinv = DispForward(cfgfile, args)
     slipinv.run_fwd()
     
 if __name__ == '__main__':

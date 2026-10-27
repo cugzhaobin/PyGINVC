@@ -1,0 +1,86 @@
+# InSAR-only profile: build and inspect the profile before inverting.
+#
+#     ProfilePrepare.py --cfgfile example/config_insar.yaml
+#     ProfileInversion.py --cfgfile example/config_insar.yaml
+#
+# example/insar_asc.dat is SYNTHETIC (strike-slip 10 mm/yr, lock 15 km,
+# LOS offset 5 mm/yr, sigma 0.5) so the example runs out of the box.
+# Replace `path` with your own file; the columns are
+#
+#     lon lat los u_e u_n u_u [sigma]
+#
+# u_e/u_n/u_u is the unit vector from the ground toward the satellite;
+# positive LOS means motion toward the satellite.  A file without the
+# sigma column uses `sigma:` from this config.
+
+profile:
+  name: XSH_insar
+  origin: [102.190, 29.340]      # lon, lat (on the fault trace)
+  strike: 345                    # degree, clockwise from north
+  along:  [-70, 70]              # km
+  normal: [-300, 300]            # km
+  frame: pyginvc                 # pyginvc (default) | localenu
+
+model:
+  type: strike2d                 # strike2d | dip2d | oblique2d | okada3d
+  sense_ss: left
+  # for a thrust/normal fault use dip2d or oblique2d, e.g.
+  # type: oblique2d
+  # dip: 45
+  # sense_ds: thrust
+
+datasets:
+  - type: insar
+    format: point
+    path: insar_asc.dat
+    label: asc
+    weight: 1.0
+    sigma: 0.5                   # used only if the file has no sigma column
+    along_bin: 10                # along-strike bin width, km; 0 = no along bin
+    normal_bin: 5                # fault-normal bin width, km; 0 = no normal bin
+
+  # descending track: a separate dataset, its own offset
+  # - type: insar
+  #   format: point
+  #   path: insar_desc.dat
+  #   label: desc
+  #   weight: 0.7
+  #   sigma: 0.5
+  #   along_bin: 10
+  #   normal_bin: 5
+
+  # grid or GeoTIFF template (needs rasterio for .tif):
+  # - type: insar
+  #   format: tif                  # point | grd | tif
+  #   paths: [desc_01.tif, desc_02.tif]   # or "desc_*.tif", one track
+  #   label: desc
+  #   weight: 0.7
+  #   incidence: 38                # scalar, per-file list or grid path
+  #   heading: 192                 # satellite heading, clockwise from north
+  #   sigma: 3.0
+  #   along_bin: 10
+  #   normal_bin: 5
+
+parameters:                      # free parameters and uniform bounds
+  slip_ss: [0.1, 30]
+  lock:    [1, 60]
+  # Nuisance terms are named <dataset label>.<term>:
+  asc.offset: [-50, 50]          # LOS reference offset
+  # asc.ramp_e: [-1, 1]          # optional plane ramp, mm/yr/km
+  # asc.ramp_n: [-1, 1]
+  # desc.offset: [-50, 50]       # for the commented descending dataset
+  # for dip2d/oblique2d add:
+  # slip_ds: [0.1, 30]
+  # dip:     [10, 60]
+
+estimator:
+  type: leastsq                  # leastsq | mcmc
+  # type: mcmc
+  # nwalkers: 32
+  # nsteps: 3000
+  # jitter: true
+  # seed: 0
+
+output:
+  dir: out_insar
+  overwrite: true

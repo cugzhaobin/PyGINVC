@@ -1,0 +1,41 @@
+# Batch inversion over the fault table: one row per profile.
+#
+#     ProfileBatch.py --cfgfile example/config_batch.yaml
+#
+# The shared datasets and estimator are read once; each catalog row
+# supplies its own geometry, model type and parameter bounds.
+
+catalog: faults_china.csv
+frame: pyginvc
+
+datasets:
+  - type: gps
+    path: camp_huan_2009_2014.vel
+    label: GPS
+    weight: 1.0
+
+model:                     # shared geometry for the catalog rows
+  dip: 70
+  sense_ss: left
+  sense_ds: normal
+
+parameters:                # defaults; a row's <param>_min/_max overrides
+  slip_ss: [0.1, 50]
+  slip_ds: [0.1, 50]
+  lock:    [1, 60]
+  dip:     [10, 60]
+  # Nuisance offsets: <dataset label>.<component>.  Each row drops the
+  # ones its model/component set does not use.
+  GPS.par: [-50, 50]
+  GPS.norm: [-50, 50]
+
+estimator:
+  type: mcmc
+  nwalkers: 32
+  nsteps: 2000
+  jitter: true
+  seed: 0
+
+output:
+  dir: out_china
+  overwrite: true

@@ -6,7 +6,6 @@ import os, time, glob
 import pandas as pd
 from numpy import column_stack, hstack, vstack, transpose
 from pyginvc.Geometry.Triangle import Triangle
-from pyginvc.Forward.Forward import Forward
 
 logging.basicConfig(
     level=logging.INFO,
@@ -93,6 +92,7 @@ class Output(object):
                 grp.create_dataset(key, data=data, compression='gzip')
 
         # output ascii files
+        from pyginvc.Forward.Forward import Forward
         from pyginvc.Forward.TriForward import TriForward
         if isinstance(self.sol, (Forward, TriForward)):
             self.WriteData()
