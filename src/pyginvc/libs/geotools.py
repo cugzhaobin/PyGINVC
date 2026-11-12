@@ -61,18 +61,16 @@ def utm2llh(xy, origin):
     P      = Proj(ellps='WGS84', proj='tmerc', lon_0=llh_org[1])
     en_org = P(llh_org[1], llh_org[0])
 
-    xy = np.mat(xy)
-    [m, n] = xy.shape
-    # Now we convert the matrix to array
-    xy = np.array(xy)
+    xy = np.atleast_2d(xy)
+    m  = xy.shape[0]
     llh = np.zeros((m, 2))
 
     for i in range(len(xy)):
         n_abs  = xy[i,0]*1000.0 + en_org[1]
         e_abs  = xy[i,1]*1000.0 + en_org[0]
         new    = P(e_abs, n_abs, inverse=True)
-        llh[:,0] = new[1]
-        llh[:,1] = new[0]
+        llh[i,0] = new[1]
+        llh[i,1] = new[0]
 
     return llh
 
@@ -267,12 +265,10 @@ def xy2llh(xy, origin):
     Rp = (N/W)*cos(deg2rad(origin[0]))
     Rm = N*(1-e**2)/W**3
 
-    # We first convert array to matrix, so we can get the shape of xy
-    xy = np.mat(xy)
-    [m, n] = xy.shape
+    # Normalize xy to 2-D so we can get the shape of xy
+    xy = np.atleast_2d(xy)
+    m  = xy.shape[0]
 
-    # Now we convert the matrix to array
-    xy = np.array(xy)
     llh = np.zeros((m, 2))
 
     llh[:,0] = origin[0] + rad2deg(1.0e3*xy[:,0]/Rm)

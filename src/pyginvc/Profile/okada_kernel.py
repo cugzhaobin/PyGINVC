@@ -3,9 +3,9 @@
 '''
 PyGINVC's rectangular dislocation with the numpy-2 fix.
 
-`pyginvc.Greens.Okada.Okada.disloc` is correct apart from one line,
-`x = np.mat(x)`, which numpy 2 removed.  This subclass changes only that
-line; the geometry convention is unchanged:
+This is a thin alias for `pyginvc.Greens.Okada.Okada.disloc`.  It used to
+patch the legacy matrix-conversion line that numpy 2 removed; the base
+class now uses `np.atleast_2d`, so the geometry convention is unchanged:
 
     disgeom = [len, wid, dep, dip, strike, delE, delN, ss, ds, op]
 
@@ -52,7 +52,7 @@ class OkadaKernel(_Okada):
 
         strkr = np.deg2rad(90 - disgeom[4])
 
-        # the only change from PyGINVC: np.mat -> np.atleast_2d
+        # identical to Okada.disloc (kept for backward compatibility)
         x = np.atleast_2d(np.asarray(x, dtype=float))
         m = x.shape[0]
 

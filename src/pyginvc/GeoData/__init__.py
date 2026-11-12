@@ -2,6 +2,7 @@
 __all__=[
         'GPSData',
         'GeoData',
+        'GeoDataCollection',
         'LEVData',
         'SARData'
         ]

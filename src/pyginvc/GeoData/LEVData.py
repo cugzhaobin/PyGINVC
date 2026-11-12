@@ -128,10 +128,10 @@ class LEVData(object):
         Icov  = np.linalg.inv(rcov1)
         sigma = np.sqrt(np.diag(rcov1))
         Len   = np.hstack([0, Len])
-        W     = np.linalg.cholesky(np.mat(Icov))
+        W     = np.linalg.cholesky(Icov)
     
     
         # print the status
-        logging.info('%d Leveling stations are read in.' %(llh))
+        logging.info('%d Leveling stations are read in.' % (nsta))
         
         return d, llh, Len, sigma, Icov, W

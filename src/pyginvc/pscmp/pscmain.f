@@ -1,14 +1,13 @@
-C Fortran routine.
-      subroutine pscmain(disgeom,ns,cxyrec,nrec,Ux,Uy,Uz,Sxx,Syy,Szz,
-     &  Sxy,Syz,Szx,Tx,Ty,Gd,Gr,X,Y,grndir)
+      program pscmain
       implicit none
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-c     this program synthesizes seismograms due to a number of          c
-c     rectanglar rupture planes using the Green's function approach.   c
+c     this program calculates viscoelastic deformation caused by a     c
+c     number of rectanglar rupture planes using the Green's function   c
+c     approach.                                                        c
 c                                                                      c
 c     The input data will be read from an input file                   c
 c                                                                      c
-c     Last modified: Potsdam, Feb, 2006, by R. Wang                    c
+c     Last modified: Potsdam, July, 2008, by R. Wang                   c
 c                                                                      c
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -20,271 +19,293 @@ c     ================
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       include 'pscglob.h'
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-c     MEMORIES FOR INPUTS
-c     ====================
-c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      character*80 grndir
-      character*80 green(13)
-c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-c     MEMORIES FOR OUTPUTS
-c     ====================
-c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      integer itout(13)
-      character*80 toutfile(13)
-      integer nsc,itsc(NSCMAX)
-      character*80 scoutfile(NSCMAX)
-c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 c     LOCAL WORK SPACES
 c     =================
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      integer i,is,isc,irec,ixyrec,ixrec,iyrec,nxrec,nyrec
-      integer nrec,ns
-      double precision xrec1,xrec2,yrec1,yrec2,dxrec,dyrec
-      double precision lats,lons
-      double precision disgeom(14,3000)
-      double precision cxyrec(2,3000)
+      integer i,j,is,isc,ntr,nsc,irec,ilatrec,ilonrec,nlatrec,nlonrec
+      integer nrec,ns,iptch,ieq,neq
+      double precision latrec1,latrec2,lonrec1,lonrec2,dlatrec,dlonrec
+      double precision sx,sy,sz
+      double complex clonrec1,clonrec2
+      double complex clonrec(NRECMAX)
+      character*80 infile
       character*180 dataline
-      logical onlysc
-      character*3 nwarnc
-      double precision Ux(250,3000),Uy(250,3000)
-      double precision Uz(250,3000)
-      double precision Sxx(250,3000),Syy(250,3000)
-      double precision Szz(250,3000)
-      double precision Sxy(250,3000),Syz(250,3000)
-      double precision Szx(250,3000)
-      double precision Tx(250,3000),Ty(250,3000)
-      double precision Gd(250,3000),Gr(250,3000)
-      double precision X(1,3000),Y(1,3000)
-
-      integer iout,jout,kout
-      character*6 nrecch
-      double precision PI, PI2
-      data PI,PI2/3.14159265358979d0,6.28318530717959d0/
-
-c added by zhao bin
-c make signature for input and ouput variables
-!f2py intent(in) :: disgeom,ns,cxyrec,nrec,grndir
-!f2py intent(out) :: Ux,Uy,Uz,Sxx,Syy,Szz,Sxy,Syz,Szx,Tx,Ty,Gd,Gr,X,Y
+      logical onlysc,neweq
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 c     END DECLARATIONS
 c     ================
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 c00000000000000000000000000000000000000000000000000000000000000000000000
-c     BEGIN INPUT PARAMETERS
-c     ======================
+c     BEGIN READ IN INPUT PARAMETERS
+c     ==============================
 c00000000000000000000000000000000000000000000000000000000000000000000000
 c
       nwarn=0
 c
-c     call mexPrintf('##############################################\n')
-c     call mexPrintf('#                                            #\n')
-c     call mexPrintf('#                Welcome to                  #\n')
-c     call mexPrintf('#                                            #\n')
-c     call mexPrintf('#                                            #\n')
-c     call mexPrintf('#   PPPP     SSSS    CCCC   M   M    PPPP    #\n')
-c     call mexPrintf('#   P   P   S       C       MM MM    P   P   #\n')
-c     call mexPrintf('#   PPPP     SSS    C       M M M    PPPP    #\n')
-c     call mexPrintf('#   P           S   C       M   M    P       #\n')
-c     call mexPrintf('#   P       SSSS     CCCC   M   M    P       #\n')
-c     call mexPrintf('#                                            #\n')
-c     call mexPrintf('#                Version 4.4                 #\n')
-c     call mexPrintf('#                                            #\n')
-c     call mexPrintf('#                    by                      #\n')
-c     call mexPrintf('#                                            #\n')
-c     call mexPrintf('#               Rongjiang Wang               #\n')
-c     call mexPrintf('#            (wang@gfz-potsdam.de)           #\n')
-c     call mexPrintf('#                                            #\n')
-c     call mexPrintf('#         GeoForschungsZentrum Potsdam       #\n')
-c     call mexPrintf('#                   July 2006                #\n')
-c     call mexPrintf('##############################################\n')
-c     call mexPrintf('                                              \n')
+      print *,'######################################################'
+      print *,'#                                                    #'
+      print *,'#                  Welcome to                        #'
+      print *,'#                                                    #'
+      print *,'#                                                    #'
+      print *,'#     PPPP     SSSS    CCCC   M   M    PPPP          #'
+      print *,'#     P   P   S       C       MM MM    P   P         #'
+      print *,'#     PPPP     SSS    C       M M M    PPPP          #'
+      print *,'#     P           S   C       M   M    P             #'
+      print *,'#     P       SSSS     CCCC   M   M    P             #'
+      print *,'#                                                    #'
+      print *,'#                  Version 2008                      #'
+      print *,'#                                                    #'
+      print *,'#                      by                            #'
+      print *,'#                                                    #'
+      print *,'#                 Rongjiang Wang                     #'
+      print *,'#              (wang@gfz-potsdam.de)                 #'
+      print *,'#                                                    #'
+      print *,'#           GeoForschungsZentrum Potsdam             #'
+      print *,'#                     July, 2008                     #'
+      print *,'######################################################'
+      print *,'                                                      '
+      write(*,'(a,$)')' Please type the file name of input data: '
+      read(*,'(a)')infile
+      open(10,file=infile,status='old')
 c00000000000000000000000000000000000000000000000000000000000000000000000
-c     PARAMETERS FOR OBSERVATION ARRAY
-c     ================================
+c     READ IN PARAMETERS FOR OBSERVATION ARRAY
+c     ========================================
 c00000000000000000000000000000000000000000000000000000000000000000000000
-      latlon=0
-      ixyrec=0
+      call getdata(10,dataline)
+      read(dataline,*)ilonrec
+      if(ilonrec.eq.0)then
+c
+c       irregular observation positions
+c
+        call getdata(10,dataline)
+        read(dataline,*)nrec
+        if(nrec.lt.1)then
+          stop ' Error: wrong input for nrec!'
+        else if(nrec.gt.NRECMAX)then
+          stop ' Error: NRECMAX defined too small!'
+        endif
+        read(10,*)(clonrec(irec),irec=1,nrec)
         do irec=1,nrec
-          xrec0(irec)=cxyrec(1,irec)
-          yrec0(irec)=cxyrec(2,irec)
+          clonrec(irec)=clonrec(irec)
+          latrec(irec)=dreal(clonrec(irec))
+          lonrec(irec)=dimag(clonrec(irec))
         enddo
-c00000000000000000000000000000000000000000000000000000000000000000000000
-c      OUTPUT PARAMETERS
-c      =================
-c00000000000000000000000000000000000000000000000000000000000000000000000
-      icopost = 1
-      insar = 0
-      xlos = -0.072
-      ylos = 0.408
-      zlos = -0.910
+      else if(ilonrec.eq.1)then
 c
-      itout(1) = 0
-      itout(2) = 0
-      itout(3) = 0
-      toutfile(1) = 'ux.dat'
-      toutfile(2) = 'uy.dat'
-      toutfile(3) = 'uz.dat'
-      itout(4) = 0
-      itout(5) = 0
-      itout(6) = 0
-      itout(7) = 0
-      itout(8) = 0
-      itout(9) = 0
-      toutfile(4) = 'sxx.dat'
-      toutfile(5) = 'syy.dat'
-      toutfile(6) = 'szz.dat'
-      toutfile(7) = 'sxy.dat'
-      toutfile(8) = 'syz.dat'
-      toutfile(9) = 'szx.dat'
-      itout(10) = 0
-      itout(11) = 0
-      itout(12) = 0
-      itout(13) = 0
-      toutfile(10) = 'tx.dat'
-      toutfile(11) = 'ty.dat'
-      toutfile(12) = 'gd.dat'
-      toutfile(13) = 'gr.dat'
-      nsc = 2
-        itsc(1) = 1
-        scoutfile(1) = 'all001.dat'
-        itsc(2) = 2
-        scoutfile(2) = 'all002.dat'
+c        1D observation profile
+c
+        call getdata(10,dataline)
+        read(dataline,*)nrec
+        call getdata(10,dataline)
+        read(dataline,*)clonrec1,clonrec2
+        if(nrec.lt.1)then
+          stop ' Error: wrong input for nrec!'
+        else if(nrec.gt.NRECMAX)then
+          stop ' Error: NRECMAX defined too small!'
+        endif
+        latrec(1)=dreal(clonrec1)
+        lonrec(1)=dimag(clonrec1)
+        if(nrec.gt.1)then
+          dlatrec=dreal(clonrec2-clonrec1)/dble(nrec-1)
+          dlonrec=dimag(clonrec2-clonrec1)/dble(nrec-1)
+        else
+          dlatrec=0.d0
+          dlonrec=0.d0
+        endif
+        do irec=1,nrec
+          latrec(irec)=dreal(clonrec1)+dlatrec*dble(irec-1)
+          lonrec(irec)=dimag(clonrec1)+dlonrec*dble(irec-1)
+        enddo
+      else if(ilonrec.eq.2)then
+c
+c        2D rectanglar observation array
+c
+        call getdata(10,dataline)
+        read(dataline,*)nlatrec,latrec1,latrec2
+        call getdata(10,dataline)
+        read(dataline,*)nlonrec,lonrec1,lonrec2
+        nrec=nlatrec*nlonrec
+        if(nrec.lt.1)then
+          stop ' Error: wrong input for nrec!'
+        else if(nrec.gt.NRECMAX)then
+          stop ' Error: NRECMAX defined too small!'
+        endif
+        if(nlatrec.gt.1)then
+          dlatrec=(latrec2-latrec1)/dble(nlatrec-1)
+        else
+          dlatrec=0.d0
+        endif
+        if(nlonrec.gt.1)then
+          dlonrec=(lonrec2-lonrec1)/dble(nlonrec-1)
+        else
+          dlonrec=0.d0
+        endif
+        irec=0
+        do ilonrec=1,nlonrec
+          do ilatrec=1,nlatrec
+            irec=irec+1
+            latrec(irec)=latrec1+dlatrec*dble(ilatrec-1)
+            lonrec(irec)=lonrec1+dlonrec*dble(ilonrec-1)
+          enddo
+        enddo
+      else
+        stop' Error: wrong input for ilonrec!'
+      endif
+c00000000000000000000000000000000000000000000000000000000000000000000000
+c      READ IN OUTPUT PARAMETERS
+c      =========================
+c00000000000000000000000000000000000000000000000000000000000000000000000
+      call getdata(10,dataline)
+      read(dataline,*)i
+      if(i.eq.1)read(dataline,*)insar,xlos,ylos,zlos
+      call getdata(10,dataline)
+      read(dataline,*)i
+      if(i.eq.1)read(dataline,*)icmb,friction,skempton,
+     &                          strike0,dip0,rake0,(sigma0(j),j=1,3)
+      call getdata(10,dataline)
+      read(dataline,*)outdir
+c
+      call getdata(10,dataline)
+      read(dataline,*)(itout(i),i=1,3)
+      call getdata(10,dataline)
+      read(dataline,*)(toutfile(i),i=1,3)
+      call getdata(10,dataline)
+      read(dataline,*)(itout(i),i=4,9)
+      call getdata(10,dataline)
+      read(dataline,*)(toutfile(i),i=4,9)
+      call getdata(10,dataline)
+      read(dataline,*)(itout(i),i=10,14)
+      call getdata(10,dataline)
+      read(dataline,*)(toutfile(i),i=10,14)
+      call getdata(10,dataline)
+      read(dataline,*)nsc
+      if(nsc.gt.NSCMAX)then
+        stop ' Error: NSCMAX defined too small!'
+      endif
+      do isc=1,nsc
+        call getdata(10,dataline)
+        read(dataline,*)tsc(isc),scoutfile(isc)
+        if(tsc(isc).lt.0.d0)then
+          stop ' Error: wrong scenario time!'
+        endif
+        tsc(isc)=tsc(isc)*DAY2SEC
+      enddo
       onlysc=.true.
+      do i=1,14
+        onlysc=onlysc.and.itout(i).ne.1
+      enddo
+      if(onlysc.and.nsc.le.0)then
+        stop ' No outputs have been selected!'
+      endif
 c00000000000000000000000000000000000000000000000000000000000000000000000
-c     PARAMETERS FOR EARTH MODEL CHOICE
-c     =================================
+c     READ IN PARAMETERS FOR EARTH MODEL CHOICE
+c     =========================================
 c00000000000000000000000000000000000000000000000000000000000000000000000
-      green(1) = 'uz'
-      green(2) = 'ur'
-      green(3) = 'ut'
-      green(4) = 'szz'
-      green(5) = 'srr'
-      green(6) = 'stt'
-      green(7) = 'szr'
-      green(8) = 'srt'
-      green(9) = 'stz'
-      green(10) = 'tr'
-      green(11) = 'tt'
-      green(12) = 'gd'
-      green(13) = 'gr'
+      call getdata(10,dataline)
+      read(dataline,*)grndir
+c
+      call getdata(10,dataline)
+      read(dataline,*)(green(i),i=1,3)
+      call getdata(10,dataline)
+      read(dataline,*)(green(i),i=4,9)
+      call getdata(10,dataline)
+      read(dataline,*)(green(i),i=10,14)
 c00000000000000000000000000000000000000000000000000000000000000000000000
-c     PARAMETERS FOR RECTANGULAR SOURCES
-c     ==================================
+c     READ IN PARAMETERS FOR RECTANGULAR SOURCES
+c     ==========================================
 c00000000000000000000000000000000000000000000000000000000000000000000000
-      lat0 = 0.0
-      lon0 = 0.0
+      call getdata(10,dataline)
+      read(dataline,*)ns
+      if(ns.lt.1)then
+        stop ' Error: wrong number of subfaults!'
+      endif
+      if(ns.gt.NSMAX)then
+        stop ' Error: too large no of source rectangles!'
+      endif
+      neq=0
       do is=1,ns
-      slip(is) = sqrt(disgeom(9,is)**2 + disgeom(8,is)**2)
-      openning(is) = disgeom(10,is)
-c convert disgeom km to lat/lon
-      lats = (KM2M*disgeom(7,is)/REARTH)/DEG2RAD
-      lons = (KM2M*disgeom(6,is)/REARTH)/DEG2RAD
-      zref(is) = disgeom(3,is)
-      length(is) = disgeom(1,is)
-      width(is) = disgeom(2,is)
-      strike(is) = disgeom(5,is)
-      dip(is) = disgeom(4,is)
-      rake(is) = atan2(disgeom(9,is),disgeom(8,is))/DEG2RAD
-      taplt(is) = disgeom(11,is)
-      taprt(is) = disgeom(12,is)
-      tapup(is) = disgeom(13,is)
-      taplw(is) = disgeom(14,is)
-        zref(is)=KM2M*zref(is)
-        length(is)=KM2M*length(is)
-        width(is)=KM2M*width(is)
-        call disazi(REARTH,lat0,lon0,lats,lons,xref(is),yref(is))
-c
-c       Note unit of xref(is) and yref(is) returned from disazi is meter!
-c
+        call getdata(10,dataline)
+        read(dataline,*)i,latref(is),lonref(is),zref(is),
+     &      length(is),width(is),strike(is),dip(is),
+     &      nptch_s(is),nptch_d(is),tstart(is)
+        if(nptch_s(is)*nptch_d(is).gt.NPTCHMAX)then
+          write(*,'(a,i3,a)')' Error: too large no of of patches at ',
+     &                       is,'. segment!'
+          stop
+        endif
+        zref(is)=zref(is)*KM2M
+        length(is)=length(is)*KM2M
+        width(is)=width(is)*KM2M
+        tstart(is)=tstart(is)*DAY2SEC
+        do iptch=1,nptch_s(is)*nptch_d(is)
+          call getdata(10,dataline)
+          read(dataline,*)ptch_s(is,iptch),ptch_d(is,iptch),sx,sy,sz
+          ptch_s(is,iptch)=ptch_s(is,iptch)*KM2M
+          ptch_d(is,iptch)=ptch_d(is,iptch)*KM2M
+          slip_s(is,iptch)=sx
+          slip_d(is,iptch)=sy
+          opening(is,iptch)=sz
+        enddo
+        neweq=.true.
+        do ieq=1,neq
+          if(tstart(is).eq.eqtime(ieq))then
+            neweq=.false.
+            ieqno(is)=ieq
+          endif
+        enddo
+        if(neweq)then
+          neq=neq+1
+          if(neq.gt.neqmax)then
+            stop ' Error: NEQMAX defined too small!'
+          endif
+          ieqno(is)=neq
+          eqtime(neq)=tstart(is)
+        endif
         if(zref(is).lt.0.d0)then
-c         call mexErrMsgTxt(' Error: source depth zs0 < 0!\n')
+          stop ' Error: source depth zs0 < 0!'
         endif
         if(dabs(strike(is)).gt.360.d0)then
-c         call mexErrMsgTxt(' Error: wrong strike angle!\n')
+          stop ' Error: wrong strike angle!'
         endif
         if(strike(is).lt.0.d0)then
           strike(is)=strike(is)+360.d0
         endif
         if(dip(is).gt.90.d0.or.dip(is).lt.0.d0)then
-c         call mexErrMsgTxt(' Error: wrong dip angle!\n')
-        endif
-        if(dabs(rake(is)).gt.360.d0)then
-c         call mexErrMsgTxt(' Error: wrong rake angle!\n')
-        else if(rake(is).gt.180.d0)then
-          rake(is)=rake(is)-360.d0
-        else if(rake(is).le.-180.d0)then
-          rake(is)=rake(is)+360.d0
+          stop ' Error: wrong dip angle!'
         endif
       enddo
 c
+      close(10)
 c00000000000000000000000000000000000000000000000000000000000000000000000
-c      END INPUT PARAMETERS
-c      ====================
+c      END READ IN INPUT PARAMETERS
+c      ============================
 c00000000000000000000000000000000000000000000000000000000000000000000000
-c     call mexPrintf('... input data successful ...\n')
+      print *,'... input data successful ...'
 c00000000000000000000000000000000000000000000000000000000000000000000000
 c      BEGIN PROCESSING
 c      ================
 c00000000000000000000000000000000000000000000000000000000000000000000000
       nwarn=0
-      if(latlon.eq.1)then
-c       call mexPrintf('... transforming geographic to cartesian ...\n')
-        do irec=1,nrec
-          call disazi(REARTH,lat0,lon0,xrec0(irec),yrec0(irec),
-     &                  xrec(irec),yrec(irec))
-c       call mexPrintf('transforming geographic to cartesian\n')
-        enddo
-      else
-        do irec=1,nrec
-          xrec(irec)=xrec0(irec)*KM2M
-          yrec(irec)=yrec0(irec)*KM2M
-        enddo
-      endif
-c     call mexPrintf('... using the Green function approach ...\n')
-      call pscgrn(ns,nrec,grndir,green,onlysc,nsc,itsc)
+      print *,'... using the Green function approach ...'
+      call pscgrn(neq,ns,nrec,ntr,onlysc,nsc)
+      print *,'... outputs ...'
+      call pscout(neq,nrec,ntr,onlysc,nsc)
 c00000000000000000000000000000000000000000000000000000000000000000000000
 c      END OF STANDARD PROCESSING
 c      ==========================
 c00000000000000000000000000000000000000000000000000000000000000000000000
       if(nwarn.eq.0)then
-c       call mexPrintf('############################################\n')
-c       call mexPrintf('#                                          #\n')
-c       call mexPrintf('#      End of computations with PSCMP      #\n')
-c       call mexPrintf('#                                          #\n')
-c       call mexPrintf('############################################\n')
+        print *,'####################################################'
+        print *,'#                                                  #'
+        print *,'#          End of computations with PSCMP          #'
+        print *,'#                                                  #'
+        print *,'####################################################'
       else
-        write(nwarnc,888)nwarn
-  888   format(i3)
-c       call mexPrintf('###########################################\n')
-c       call mexPrintf(' Sorry, there have been'//nwarnc
-c    &     //' warnings. \n')
-c       call mexPrintf('         Results may be inaccurate!        \n')
-c       call mexPrintf('###########################################\n')
+        print *,'####################################################'
+        print *,'     Sorry, there have been',nwarn,' warnings.      '
+        print *,'             Results may be inaccurate!             '
+        print *,'####################################################'
       endif
 c
-      do iout=1,250
-        do jout=1,3000
-          Ux(iout,jout)=obs(iout,jout,1)
-          Uy(iout,jout)=obs(iout,jout,2)
-          Uz(iout,jout)=obs(iout,jout,3)
-          Sxx(iout,jout)=obs(iout,jout,4)
-          Syy(iout,jout)=obs(iout,jout,5)
-          Szz(iout,jout)=obs(iout,jout,6)
-          Sxy(iout,jout)=obs(iout,jout,7)
-          Syz(iout,jout)=obs(iout,jout,8)
-          Szx(iout,jout)=obs(iout,jout,9)
-          Tx(iout,jout)=obs(iout,jout,10)
-          Ty(iout,jout)=obs(iout,jout,11)
-          Gd(iout,jout)=obs(iout,jout,12)
-          Gr(iout,jout)=obs(iout,jout,13)
-          if(iout.eq.1)then
-            X(iout,jout)=xrec(jout)
-            Y(iout,jout)=yrec(jout)
-          endif
-        enddo
-      enddo
-      write(nrecch,889)nrec
- 889  format(i6)
-c     call mexprintf(' 15 arrays of'//nrecch//' values returned.\n')
-      print *, Ux(1,1), Uy(1,1), Uz(1,1)
+      stop
       end

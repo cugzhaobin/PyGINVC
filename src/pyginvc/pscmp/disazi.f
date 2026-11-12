@@ -17,6 +17,7 @@ c
 	lonb=loneq*DEGTORAD
 	latc=latst*DEGTORAD
 	lonc=lonst*DEGTORAD
+c        print *,(latc-latb)*rearth,(lonc-lonb)*rearth*dcos(lonb)
 c
 	if(lonb.lt.0.d0)lonb=lonb+PI2
 	if(lonc.lt.0.d0)lonc=lonc+PI2
@@ -66,6 +67,8 @@ c	cartesian coordinates of the sation
 c
 	xnorth=dis*dcos(anglec)
 	yeast=dis*dsin(anglec)
+c        print *,xnorth,yeast
+c        pause
 c
 	return
 	end

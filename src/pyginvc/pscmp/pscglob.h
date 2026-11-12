@@ -3,45 +3,46 @@ c     GLOBAL CONSTANTS
 c     ================
 c
 c     NRECMAX = max. number of observation positions
-c     NZSMAX = max. number of the discrete source depths
-c     NRMAX = max. number of the discrete radial diatances
-c     NSMAX = max. number of the source rectangles
+c     NZSMAX = max. number of discrete source depths
+c     NRMAX = max. number of discrete radial diatances
+c     NSMAX = max. number of fault segments
+c     NEQMAX = max. number of earthquakes
+c     NPTCHMAX = max. number of patches at a source rectangle
 c     NPSMAX = max. number of discrete point sources per source depth
 c     NTMAX = max. number of time samples used for Green's functions
 c     NTRMAX = max. number of time samples of the outputs
-c     NSCMAX = max. number of scenario outputs
+c     NSCMAX = max. number of scenario outputs (<= NTRMAX/2)
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      integer NZSMAX,NRMAX,NSMAX,NPSMAX,NRECMAX,NTMAX,NTRMAX,NSCMAX
-C code modified version 4.4
-c      parameter(NZSMAX=100,NRMAX=151)
-c      parameter(NZSMAX=100,NRMAX=501)
-      parameter(NZSMAX=150,NRMAX=1501)
-      parameter(NSMAX=1000,NPSMAX=50000)
-      parameter(NRECMAX=3000)
-C code modified version 4.4
-c     parameter(NRECMAX=22801)
-c     parameter(NRECMAX=15000)
-      parameter(NTMAX=256,NTRMAX=NTMAX)
-      parameter(NSCMAX=100)
+      integer NZSMAX,NRMAX,NEQMAX,NSMAX,NPTCHMAX
+	  integer NPSMAX,NRECMAX,NTMAX,NTRMAX,NSCMAX
+      parameter(NZSMAX=100,NRMAX=251)
+      parameter(NEQMAX=20,NSMAX=5000,NPTCHMAX=1000)
+	  parameter(NPSMAX=100000)
+      parameter(NRECMAX=4000)
+      parameter(NTMAX=1024,NTRMAX=1024)
+      parameter(NSCMAX=NTRMAX/2)
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 c     RECTANGULAR SOURCE PLANES
 c     =========================
 c
-c     (xs0,ys0,zs0) = coordinates of the reference point
-c     with x = north, y = east, z = downward.
+c     (latref,lonref) = geographic coordinates of the reference point
+c     zref = depth of the reference point.
 c     all angles in degree.
 c     NSMAX = the max. number of source rectangles
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      double precision slip(NSMAX),openning(NSMAX)
-      double precision xref(NSMAX),yref(NSMAX),zref(NSMAX)
+      integer nptch_s(NSMAX),nptch_d(NSMAX),ieqno(NSMAX)
+      double precision latref(NSMAX),lonref(NSMAX),zref(NSMAX)
       double precision length(NSMAX),width(NSMAX)
-      double precision strike(NSMAX),dip(NSMAX),rake(NSMAX)
-      double precision magfac(NSMAX)
-      double precision taplt(NSMAX),taprt(NSMAX)
-      double precision tapup(NSMAX),taplw(NSMAX)
+      double precision strike(NSMAX),dip(NSMAX)
+      double precision tstart(NSMAX),eqtime(NEQMAX)
+      double precision ptch_s(NSMAX,NPTCHMAX),ptch_d(NSMAX,NPTCHMAX)
+      double precision slip_s(NSMAX,NPTCHMAX)
+	  double precision slip_d(NSMAX,NPTCHMAX)
+      double precision opening(NSMAX,NPTCHMAX)
 c
-      common/rects/slip,openning,xref,yref,zref,length,width,
-     &             strike,dip,rake,magfac,taplt,taprt,tapup,taplw
+      common/irects/nptch_s,nptch_d,ieqno
+      common/drects/latref,lonref,zref,length,width,strike,dip,tstart,
+     &              eqtime,ptch_s,ptch_d,slip_s,slip_d,opening
 c
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 c     DISTRETE POINT SOURCES
@@ -51,12 +52,12 @@ c     (xs,ys,zs) = coordinates of the discrete point sources
 c     with x = north, y = east, z = downward
 c     angles in degree.
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      integer nps(NZSMAX)
-      double precision px(NPSMAX,NZSMAX),py(NPSMAX,NZSMAX)
+      integer nps(NZSMAX),isno(NPSMAX,NZSMAX)
+      double precision plat(NPSMAX,NZSMAX),plon(NPSMAX,NZSMAX)
       double precision pz(NPSMAX,NZSMAX),pmwei(6,NPSMAX,NZSMAX)
 c
-      common/points/px,py,pz,pmwei
-      common/ipoints/nps
+      common/ipoints/nps,isno
+      common/dpoints/plat,plon,pz,pmwei
 c
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 c     GREEN'S FUNCTION INFO
@@ -68,52 +69,35 @@ c     nr,r1,r2 = number of distance samples, start and end distances used
 c           in Green's functions
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       integer nr,nzs,nt
-      double precision r1,r2,zs1,zs2
-      double precision zrec,larec,murec,rhorec,etarec,relaxrec,
-     +                 twindow
-      common /greeninfo/r1,r2,zs1,zs2,zrec,larec,murec,rhorec,
-     +                  etarec,relaxrec,twindow
+      double precision r1,r2,sampratio,zs1,zs2
+      double precision zrec,larec,murec,rhorec,etkrec,etmrec,
+     +                 alfrec,twindow
       common /igreeninfo/nr,nzs,nt
+      common /greeninfo/r1,r2,sampratio,zs1,zs2,zrec,larec,murec,rhorec,
+     +                  etkrec,etmrec,alfrec,twindow
 c
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 c     OBSERVATION POSITIONS AND OBSERVABLES
 c     =====================================
 c
-c     (xrec(i),yrec(i))=coordinates of the observation positions
+c     (latrec(i),lonrec(i))=coordinates of the observation positions
 c     the 3 displcement/velocity/acceleration components: ux,uy,uz
 c     NRECMAX = the max. number of observation positions
-c     latlon: 1/0 = geographic/Cartesian
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      integer ntrec,latlon
-      double precision xrec0(NRECMAX),yrec0(NRECMAX)
-      double precision xrec(NRECMAX),yrec(NRECMAX)
-      double precision obs(NTRMAX,NRECMAX,13)
+      integer ntrec,itsc(2*NSCMAX),itout(14)
+      double precision latrec(NRECMAX),lonrec(NRECMAX)
+      double precision tsc(NSCMAX),obs(NTRMAX,NRECMAX,14)
+      double precision coobs(NEQMAX,NRECMAX,14)
+      double precision poobs(NEQMAX,NRECMAX,14)
+      double precision obs1(NRECMAX,14),obs2(NRECMAX,14)
+      character*80 grndir,green(14)
+      character*80 outdir,toutfile(14),scoutfile(NSCMAX)
 c
-      common/obsarray/xrec0,yrec0,xrec,yrec,obs
-      common/iobsarray/ntrec,latlon
+      common/iobsarray/ntrec,itsc,itout
+      common/dobsarray/latrec,lonrec,tsc,
+     &                 obs,coobs,poobs,obs1,obs2
+      common/cobsarray/grndir,green,outdir,toutfile,scoutfile
 c
-c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-c     EARTHQUAKE'S GLOBAL PARAMETERS
-c     ==============================
-c
-c     lat0 = epicentre's latitude
-c     lon0 = epicentre's east longitude
-c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      double precision lat0,lon0
-c
-      common/coororigin/lat0,lon0
-c
-c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-c     OUTPUT SWITCH
-c     =============
-c
-c     icopost = 1: co and postseismic changes
-c               0: only post-seismic changes
-c
-c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      integer icopost
-c
-      common/cpseismic/icopost
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 c     COSINES OF LOS TO INSAR ORBIT
 c     =============================
@@ -122,10 +106,14 @@ c     insar = 1: output los displacements
 c             0: not output los displacements
 c     xlos, ylos, zlos = cosines of the los
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      integer insar
+      integer insar,icmb
       double precision xlos,ylos,zlos
+      double precision friction,skempton,strike0,dip0,rake0
+      double precision sigma0(3)
 c
-      common/coororigin/xlos,ylos,zlos,insar
+      common/iothers/insar,icmb
+      common/dothers/xlos,ylos,zlos,
+     &      friction,skempton,strike0,dip0,rake0,sigma0
 c
 c~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 c     WARNING STATISTICS

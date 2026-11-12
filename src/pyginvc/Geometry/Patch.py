@@ -165,9 +165,9 @@ class Fault(object):
         
         
         # Calculate midpoints, depths of each patch    
-        p         = np.mat(cos_dip*(jw*jjs - m[0,1])).T * ones((1, i))   
-        q         = np.mat(ones((j,1)) * ((iw*iis) - 0.5 * (m[0,0] + iw))) 
-        r         = np.mat((m[0,2] - jw * sin_dip * (j - jjs))).T * ones((1, i))
+        p         = np.outer(cos_dip*(jw*jjs - m[0,1]), ones(i))
+        q         = np.outer(ones(j), (iw*iis) - 0.5 * (m[0,0] + iw))
+        r         = np.outer(m[0,2] - jw * sin_dip * (j - jjs), ones(i))
         p         = p.T.flatten().T
         q         = q.T.flatten().T
         r         = r.T.flatten().T

@@ -138,8 +138,8 @@ class Oblique2D(object):
 class Okada3D(object):
     '''
     One uniform-slip rectangle below the locking depth, dipping toward
-    +normal.  Uses PyGINVC's Okada.disloc through OkadaKernel (only the
-    numpy-2 np.mat line is changed).
+    +normal.  Uses PyGINVC's Okada.disloc through OkadaKernel, a
+    backward-compatible alias.
     '''
     params = {'slip_ss': 5.0, 'slip_ds': 1.0, 'lock': 15.0,
               'dip': 90.0, 'width': 200.0, 'length': 1000.0}

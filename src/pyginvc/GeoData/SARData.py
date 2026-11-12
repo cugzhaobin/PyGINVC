@@ -2,7 +2,7 @@
 import numpy as np
 import os, logging
 from scipy.spatial.distance import cdist
-from pyginvc.libs import geotools as gt
+from pyproj import Proj
 
 logging.basicConfig(
                     level=logging.INFO,
@@ -28,6 +28,7 @@ class SARData(object):
             lamda       =
         '''
         self.sarfile = sarfile
+        self.scale   = scale
         self.sigma   = sigma
         self.lamda   = lamda
 
@@ -41,7 +42,7 @@ class SARData(object):
         #return
 
     def load(self):
-        self.load_sar_data()
+        self.load_sar_data(self.scale)
         self.build_spatial_cov()
 
     def set_wsar(self, wsar):
@@ -94,7 +95,11 @@ class SARData(object):
             self.cov_sar = np.ones(nlos)
         else:
             origin  = np.mean(self.llh_sar, axis=0)
-            localxy = gt.local2llh(self.llh_sar, origin)
+            P       = Proj(ellps='WGS84', proj='tmerc', lon_0=origin[1])
+            en      = P(self.llh_sar[:, 1], self.llh_sar[:, 0])
+            en_org  = P(origin[1], origin[0])
+            localxy = np.column_stack([(en[0] - en_org[0]) / 1000.0,
+                                       (en[1] - en_org[1]) / 1000.0])
             dist    = cdist(localxy, localxy, metric="euclidean")
             cov_sar = sigma**2 * np.exp(-dist**2/(2*lamda**2))
             self.cov_sar = cov_sar

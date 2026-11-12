@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyginvc"
-version = "0.1.0"
+version = "0.2.0"
 description = "a python program used for fault slip inversion from geodetic observations (GNSS, InSAR, leveling) and forward simulation."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { text = "MIT" }

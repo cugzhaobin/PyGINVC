@@ -6,7 +6,7 @@ import logging
 import numpy as np
 from scipy import linalg
 from numpy import cos, sin, deg2rad
-from pyginvc.Greens import okada85 as okada
+from pyginvc.Greens.okada95 import okada85 as okada
 from pyginvc.Greens.BaseGreen import BaseGreen
 #from okada_wrapper import dc3dwrapper
 logging.basicConfig(
@@ -202,7 +202,7 @@ class Okada(BaseGreen):
             xy = xy.reshape(-1,2)
             
         nf     = self.flt.nf
-        ndata  = self.data.n_sar
+        ndata  = len(xy)
 
         # Descending track unit vector
         if len(unit) == 0:
@@ -272,9 +272,8 @@ class Okada(BaseGreen):
         strkr   = np.deg2rad(90 - disgeom[4])
     
         # get the size of xy
-        x       = np.mat(x)
-        [m,n]   = x.shape
-        x       = np.array(x)
+        x       = np.atleast_2d(x)
+        m       = x.shape[0]
     
         delE    = disgeom[5]
         delN    = disgeom[6]
