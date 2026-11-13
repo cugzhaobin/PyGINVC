@@ -1,7 +1,6 @@
-from pyginvc.Geometry.Fault import Fault
-import pyginvc.libs.geotools as gt
 import numpy as np
-import math
+from pyginvc.Geometry.Patch import Fault
+
 def gen_edcmp_fault(filename, origin):
     '''
     Convert FaultGeom of DISMODEL program into the format of EDCMP progam
@@ -18,9 +17,10 @@ def gen_edcmp_fault(filename, origin):
         file in the format of EDCMP program
     '''
 
-
     # we first load the FaultGeom file
-    flt = Fault(filename, 1, 1, False, origin=origin)
+    nf  = len(np.atleast_2d(np.genfromtxt(filename, comments='#')))
+    flt = Fault(filename, nf, 1, False, origin=origin)
+    flt.load_fault()
     edcmp_flt = flt.FaultGeom2EDCMP()
 
     return edcmp_flt

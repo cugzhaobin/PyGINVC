@@ -33,38 +33,101 @@ class BaseInversion:
         self.WSAR        = None
 
     def get_smoothing_factors(self):
-        smf1, smf2, step = self.dict_weight['smoothfactor']
-        smo_facts = np.arange(smf1, smf2, step)
-        return smo_facts if len(smo_facts) > 0 else np.array([smf1])
+        """
+        Parse ``smoothfactor`` into an array of smoothing factors.
+
+        Accepted forms:
+            scalar              -> [value]
+            [a]                 -> [a]
+            [a, b]              -> explicit factors [a, b]
+            [a, b, step]        -> a, a+step, ..., b (end point included when
+                                   it lies on the grid)
+
+        A three-element list keeps the historical "start, stop, step" meaning,
+        but the stop value is no longer silently dropped.
+        """
+        raw = self.dict_weight.get('smoothfactor', [0.1, 0.5, 0.1])
+        if raw is None:
+            raise ValueError('smoothfactor must not be empty.')
+        if np.isscalar(raw):
+            values = [float(raw)]
+        else:
+            values = [float(v) for v in np.asarray(raw).ravel()]
+        if not values:
+            raise ValueError('smoothfactor must contain at least one value.')
+
+        if len(values) == 3:
+            start, stop, step = values
+            if not np.isfinite([start, stop, step]).all():
+                raise ValueError(
+                    'smoothfactor must be finite, got %r' % (values,))
+            if step == 0:
+                raise ValueError('smoothfactor step must be non-zero.')
+            if (stop - start) * step < 0:
+                raise ValueError(
+                    'smoothfactor step (%r) points away from stop (%r) '
+                    'starting at start (%r).' % (step, stop, start))
+            n = int(np.floor((stop - start) / step + 1e-9)) + 1
+            smo_facts = start + step * np.arange(max(n, 1))
+        else:
+            smo_facts = np.asarray(values, dtype=float)
+
+        if not np.isfinite(smo_facts).all() or (smo_facts < 0).any():
+            raise ValueError(
+                'smoothfactor values must be finite and non-negative, got %r'
+                % (smo_facts.tolist(),))
+        return smo_facts
 
     def get_weight(self):
         """
-        Get weight of GPS and SAR data. relative weight * orignal weight
+        Get weight of GPS and SAR data. relative weight * original weight
+
+        Weights are built from the stored covariance arrays.  Older versions
+        read ``data.W_sar``, but that attribute is no longer created by
+        :class:`GeoData`, which made any InSAR inversion fail with
+        ``AttributeError``.
         """
 
-        # number of data from different SAR datasets (different orbit or satellitte)
-        n_sar = self.data.n_sar
+        # InSAR: per-observation variance (the diagonal when a full
+        # covariance matrix was supplied) and per-file relative weights.
+        cov_sar = np.asarray(getattr(self.data, 'cov_sar', np.array([])))
+        n_sar   = np.asarray(getattr(self.data, 'n_sar', 0),
+                             dtype=int).reshape(-1)
+        var_sar = cov_sar if cov_sar.ndim == 1 else np.diag(cov_sar)
+        var_sar = np.asarray(var_sar, dtype=float).ravel()
 
-        # relative weight between GPS and SAR
-        wsar  = self.dict_weight['wsar']
-        if self.data.cov_sar.ndim == 1:
-            cov_sar = np.diag(self.data.cov_sar)
-        elif self.data.cov_sar.ndim == 2:
-            cov_sar = self.data.cov_sar
-    
-        WSAR  = np.zeros_like(cov_sar)
-        if WSAR.size > 0:
-            for i in range(len(n_sar)):
-                idx0 = sum(n_sar[:i])
-                idx1 = sum(n_sar[:i+1])
-                WSAR[idx0:idx1,idx0:idx1] = wsar[i]*self.data.W_sar[idx0:idx1,idx0:idx1]
-        
-        cov_gps = self.data.cov_gps
-        if cov_gps.ndim == 1:
-            var_gps = cov_gps
+        if var_sar.size == 0:
+            WSAR = np.zeros((0, 0))
         else:
-            var_gps = np.diag(cov_gps)
-        WGPS    = np.diag(1/np.sqrt(var_gps))
+            if n_sar.sum() != var_sar.size:
+                raise ValueError(
+                    'cov_sar has %d entries but n_sar sums to %d.'
+                    % (var_sar.size, n_sar.sum()))
+            w_sar = 1.0 / np.sqrt(np.where(var_sar > 0, var_sar, 1.0))
+
+            wsar = np.asarray(self.dict_weight.get('wsar', 1.0),
+                              dtype=float).ravel()
+            if wsar.size == 1:
+                wsar = np.full(n_sar.size, wsar[0])
+            if wsar.size != n_sar.size:
+                raise ValueError(
+                    'wsar has %d values but %d InSAR file(s) are present.'
+                    % (wsar.size, n_sar.size))
+
+            offset = 0
+            for weight, n in zip(wsar, n_sar):
+                w_sar[offset:offset + n] *= weight
+                offset += n
+            WSAR = np.diag(w_sar)
+
+        # GPS: same diagonal-variance treatment as before.
+        cov_gps = np.asarray(getattr(self.data, 'cov_gps', np.array([])))
+        var_gps = cov_gps if cov_gps.ndim == 1 else np.diag(cov_gps)
+        var_gps = np.asarray(var_gps, dtype=float).ravel()
+        if var_gps.size == 0:
+            WGPS = np.zeros((0, 0))
+        else:
+            WGPS = np.diag(1.0 / np.sqrt(np.where(var_gps > 0, var_gps, 1.0)))
         return WGPS, WSAR
 
     def assemble_data_vector(self, nfault: int):
@@ -84,24 +147,20 @@ class BaseInversion:
         # weight
         W, WSAR   = self.get_weight()
         d_lap     = np.zeros(3 * nfault)
-        
-        di_block, dr_block = [], []
+
+        # The weighted observation block is the same for the inversion and
+        # the residual vector; build it once instead of twice.  Only d2I gets
+        # the zero block matching the smoothing rows; d2R stays at the data
+        # length because callers use it directly against G2R @ x.
+        parts = []
         if len_geod > 0:
-            wd = W @ d_geod
-            di_block.append(wd.flatten())
-            dr_block.append(wd.flatten())
-
+            parts.append(np.asarray(W @ d_geod).ravel())
         if len_sar > 0:
-            ws = WSAR @ d_sar
-            di_block.append(ws)
-            dr_block.append(ws)
+            parts.append(np.asarray(WSAR @ d_sar).ravel())
+        d2R = np.hstack(parts) if parts else np.array([])
 
-        if d_lap.size > 0:
-            di_block.append(d_lap)
-
-        d2I = np.hstack(di_block)
-        d2R = np.hstack(dr_block)
-
+        d2I = (np.hstack([d2R, d_lap]) if d_lap.size > 0
+               else d2R.copy())
         return d2I, d2R
 
     def solve_least_squares(self, G2I, d2I, bl=None, bu=None):
@@ -114,9 +173,13 @@ class BaseInversion:
             logging.info("Unconstrained LSQ finished.")
             return x
 
-    def compute_residuals(self, d2R, G2R, x, W, WSAR, len_geod, len_sar):
+    def compute_residuals(self, d2R, G2R, x, W, WSAR, len_geod, len_sar,
+                          dhat=None):
         r = np.zeros(len_geod + len_sar)
-        dhat = G2R @ x
+        # Callers that already formed the prediction can pass it in, avoiding
+        # a duplicate (and potentially large) matrix-vector product.
+        if dhat is None:
+            dhat = G2R @ x
 
         mis_gps, mis_sar = 0.0, 0.0
 
@@ -223,14 +286,14 @@ class BaseInversion:
         for i in range(nelems):
             # for strike slip component
             if np.remainder(i,3) == 0:
-                if i <= nsegs*3:
+                if i < nsegs*3:
                     if surf_slip_c == 1:
                          bu[i] = surf_slip[i]+s_ss_range
                          bl[i] = surf_slip[i]-s_ss_range
                          if bu[i] > ss_range[1]:
                              bu[i] = ss_range[1]
-                         if bl[i] < ss_range[1]:
-                             bl[i] = ss_range[1]
+                         if bl[i] < ss_range[0]:
+                             bl[i] = ss_range[0]
                     else:
                          bu[i] = ss_range[1]
                          bl[i] = ss_range[0]
@@ -241,7 +304,7 @@ class BaseInversion:
                          if bu[i] > ss_range[1]:
                              bu[i] = ss_range[1]
                          if bl[i] < ss_range[0]:
-                             bl[i] = ss_range[1]
+                             bl[i] = ss_range[0]
                      else:
                          bu[i] = ss_range[1]
                          bl[i] = ss_range[0]
@@ -251,14 +314,14 @@ class BaseInversion:
                 
             # for dip slip component
             if np.remainder(i,3) == 1:
-                 if i <= nsegs*3:
+                 if i < nsegs*3:
                      if surf_slip_c == 1:
                          bu[i] = surf_slip[i]+s_ds_range
                          bl[i] = surf_slip[i]-s_ds_range
                          if bu[i] > ds_range[1]:
                              bu[i] = ds_range[1]
-                         if bl[i] < ds_range[1]:
-                             bl[i] = ds_range[1]
+                         if bl[i] < ds_range[0]:
+                             bl[i] = ds_range[0]
                      else:
                          bu[i] = ds_range[1]
                          bl[i] = ds_range[0]
@@ -269,7 +332,7 @@ class BaseInversion:
                          if bu[i] > ds_range[1]:
                              bu[i] = ds_range[1]
                          if bl[i] < ds_range[0]:
-                             bl[i] = ds_range[1]
+                             bl[i] = ds_range[0]
                      else:
                          bu[i] = ds_range[1]
                          bl[i] = ds_range[0]
@@ -278,14 +341,14 @@ class BaseInversion:
                      bl[i] = ds_range[0]           
             # openning component uses op_range, s_op_range, b_op_range   
             if np.remainder(i,3) == 2:
-                 if i <= nsegs*3:
+                 if i < nsegs*3:
                      if surf_slip_c == 1:
                          bu[i] = surf_slip[i]+s_op_range
                          bl[i] = surf_slip[i]-s_op_range
                          if bu[i] > op_range[1]:
                              bu[i] = op_range[1]
-                         if bl[i] < op_range[1]:
-                             bl[i] = op_range[1]
+                         if bl[i] < op_range[0]:
+                             bl[i] = op_range[0]
                      else:
                          bu[i] = op_range[1]
                          bl[i] = op_range[0]
@@ -296,7 +359,7 @@ class BaseInversion:
                          if bu[i] > op_range[1]:
                              bu[i] = op_range[1]
                          if bl[i] < op_range[0]:
-                             bl[i] = op_range[1]
+                             bl[i] = op_range[0]
                      else:
                          bu[i] = op_range[1]
                          bl[i] = op_range[0]
@@ -311,12 +374,25 @@ class BaseInversion:
                 bu[i] = splane_range[1]
                 bl[i] = splane_range[0]            
                 
-        # added by zhao bin Dec 22, 2016. 
+        # added by zhao bin Dec 22, 2016.
         # if slip bound files are exist, then overwrite the bound array bu and bl
-        if slip_lb != '' and slip_ub != '':
-            nelems       = 3*nsegs*ndeps
-            bl[0:nelems] = np.genfromtxt(slip_lb, usecols = [7,8,9]).reshape(nelems)
-            bu[0:nelems] = np.genfromtxt(slip_ub, usecols = [7,8,9]).reshape(nelems)
+        has_lb = bool(str(slip_lb or '').strip())
+        has_ub = bool(str(slip_ub or '').strip())
+        if has_lb != has_ub:
+            raise ValueError(
+                'slip_lb and slip_ub must be given together; got %r and %r.'
+                % (slip_lb, slip_ub))
+        if has_lb and has_ub:
+            nelems = 3*nsegs*ndeps
+            lb = np.genfromtxt(slip_lb, usecols=[7, 8, 9]).reshape(-1)
+            ub = np.genfromtxt(slip_ub, usecols=[7, 8, 9]).reshape(-1)
+            if lb.size != nelems or ub.size != nelems:
+                raise ValueError(
+                    'slip_lb/slip_ub must contain %d slip values (%d patches '
+                    'x 3 components); got %d and %d.'
+                    % (nelems, nsegs*ndeps, lb.size, ub.size))
+            bl[0:nelems] = lb
+            bu[0:nelems] = ub
             logging.info('The lower bound and upper bound of slip are assgined from {} and {}.'.format(slip_lb, slip_ub))
     
         return bu, bl

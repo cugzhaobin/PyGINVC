@@ -6,7 +6,7 @@ import logging
 import numpy as np
 from scipy import linalg
 from numpy import cos, sin, deg2rad
-from pyginvc.Greens.okada95 import okada85 as okada
+from pyginvc.Greens.okada85 import okada85 as okada
 from pyginvc.Greens.BaseGreen import BaseGreen
 #from okada_wrapper import dc3dwrapper
 logging.basicConfig(
@@ -60,9 +60,19 @@ class Okada(BaseGreen):
         unit          = data.unit
         origin        = flt.origin
         dis_geom_grid = flt.dis_geom_grid
-        
-        ss, ds, op    = dict_green['greentype']
-        nu            = dict_green['nu']
+
+        # Allocate both blocks with their final shapes up front.  A missing
+        # data kind (e.g. no InSAR in a GPS-only inversion) then yields a
+        # (0, 3*nf) block instead of an unusable (0, 0) one.
+        n_gps         = len(llh_gps) * ndim
+        n_lev         = len(llh_lev)
+        n_sar         = len(llh_sar)
+        nf3           = 3 * flt.nf
+        self.G        = np.zeros((n_gps + n_lev, nf3))
+        self.G_sar    = np.zeros((n_sar, nf3))
+
+        ss, ds, op    = dict_green.get('greentype', [1, 1, 0])
+        nu            = dict_green.get('nu', 0.25)
         verbose       = dict_green.get('verbose', True)
         
         # convert the LLH to local coordinate
@@ -88,29 +98,33 @@ class Okada(BaseGreen):
         """
     
         # if we have GPS data
-        if xy_gps.size > 0 and dis_geom_grid.size > 0:
-            self.G = self.make_gps_green(dis_geom_grid, xy_gps, nu, ss, ds, op, ndim)
+        if xy_gps.size > 0 and n_gps > 0 and dis_geom_grid.size > 0:
+            self.G[:n_gps] = self.make_gps_green(
+                dis_geom_grid, xy_gps, nu, ss, ds, op, ndim)
             if verbose:
                 logging.info(f"Green's functions for {len(xy_gps)} GPS stations are computed.")
             
         # if we have level data
-        if xy_lev.size > 0:
-            G_lev  = self.make_gps_green(dis_geom_grid, xy_lev, nu, ss, ds, op)
-            self.G = np.vstack((self.G, G_lev))
+        if xy_lev.size > 0 and n_lev > 0 and dis_geom_grid.size > 0:
+            # TODO: leveling observes the vertical component, while
+            # make_gps_green(gdim=1) currently returns East.  Leveling input
+            # is not read yet (LEVData raises instead of silently no-op).
+            self.G[n_gps:] = self.make_gps_green(
+                dis_geom_grid, xy_lev, nu, ss, ds, op, 1)
             if verbose:
                 logging.info(f"Green's functions for {len(xy_lev)} level stations are computed.")
         
         # if we have SAR data
-        if xy_sar.size > 0:
+        if xy_sar.size > 0 and n_sar > 0 and dis_geom_grid.size > 0:
             self.G_sar = self.make_sar_green(unit, dis_geom_grid, xy_sar, nu, ss, ds, op)
             if verbose:
                 logging.info(f"Green's functions for {len(xy_sar)} InSAR points are computed.")
         
-        if dict_green.get('gps_ramp', False):
+        if dict_green.get('gps_ramp', False) and xy_gps.size > 0:
             self.G_gps_ramp = self.make_green_gps_ramp(xy_gps, ndim, method=1)
         else:
             self.G_gps_ramp = np.empty((self.G.shape[0],0))
-        if dict_green.get('sar_ramp', False):
+        if dict_green.get('sar_ramp', False) and xy_sar.size > 0:
             sizes = data.n_sar
             ramp  = []
             for i in range(len(sizes)):
@@ -147,7 +161,7 @@ class Okada(BaseGreen):
             xy = xy.reshape(-1,2)
 
         nf    = self.flt.nf
-        nobs  = len(xy) * self.data.ndim    
+        nobs  = len(xy) * gdim    
         G     = np.zeros((nobs, 3*nf))
     
         # for each subfaults
@@ -176,11 +190,13 @@ class Okada(BaseGreen):
     def make_sar_green(self, unit, dis_geom, xy, nu, ss, ds, op):
         '''
         Make Green's Function for InSAR data
-        This treats range change data as absolute with respect to a reference
-        level of zero deformation.  In practice the reference level is uncertain
-        and the inversion should allow for a best-fitting reference level.
-        Hence the appearance of 3*nf+1 parameters below.
-    
+
+        The returned matrix has 3*nf columns and treats range change data as
+        absolute with respect to a zero-deformation reference.  In practice
+        the reference level is unknown, so the inversion layer estimates one
+        constant per InSAR track (plus optional E/N tilt terms); see
+        MultiFaultInversion.build_ramp and BaseGreen.make_green_sar_ramp.
+
         Input:
             unit         -  unit vector of InSAR data
             dis_geom     -  numpy array, Dislocation Geometry

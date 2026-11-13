@@ -13,8 +13,7 @@ def main():
     parser.add_argument('--green', required=True, type=str)
     parser.add_argument('--smooth', required=True, type=str)
     args    = parser.parse_args()
-
-    fltfile = args.faultfile
+    
     fltgeom = np.loadtxt(args.faultfile)
     G       = np.empty(0)
     Lap     = np.empty(0)

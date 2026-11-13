@@ -5,13 +5,15 @@
 
 from pyginvc.Geometry.Patch import Fault
 import argparse
+import numpy as np
 
 def main():
     parser = argparse.ArgumentParser(description="Convert FaultGeom file to gmtlin format.")
     parser.add_argument('--faultfile', type=str, required=True, help='Width depth dip lat0 lon1 lat2 lon2 strike-slip dip-slip tensile')
     args    = parser.parse_args()
     fltfile = args.faultfile
-    flt     = Fault(fltfile, 1, 1, False)
+    nfault  = len(np.atleast_2d(np.genfromtxt(fltfile, comments='#')))
+    flt     = Fault(fltfile, nfault, 1, False)
     flt.load_fault()
     flt.FaultGeom2GMT()
 

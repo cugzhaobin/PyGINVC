@@ -24,10 +24,13 @@ import pandas as pd
 DEFAULT_ARCHIVE_PATTERNS = (
     'gps*.gmtvec',
     'sar*.xyz',
+    'lev*.xyz',
     'ruff_misfit',
     'slipmodel*.tri',
     'slipmodel*.faultgeom',
-    '*.h5',
+    # Only the solution file is archived; Green-function caches and other
+    # intermediate HDF5 files must stay next to the run that produced them.
+    'solutions.h5',
     '*.gmtlin',
     'summary',
 )
@@ -48,7 +51,8 @@ def write_solution_h5(filename, obs, fault, solution):
     Input:
         filename = output file name
         obs      = dict with llh_gps, llh_lev, llh_sar, unit, d_gps, d_lev,
-                   d_sar and ndim
+                   d_sar and ndim; optional n_sar holds the point count of
+                   each InSAR file (track), used to split plots per file
         fault    = dict with origin, flttype, plus rectangle keys
                    (dis_geom, geom) or triangle keys
                    (vertex_enu, vertex_llh, element)
@@ -61,6 +65,18 @@ def write_solution_h5(filename, obs, fault, solution):
                     'd_gps', 'd_lev', 'd_sar'):
             grp.create_dataset(key, data=obs[key], compression='gzip')
         grp['ndim'] = obs['ndim']
+        # 逐 InSAR 文件的点数，绘图时据此拆分 track
+        if obs.get('n_sar') is not None:
+            grp.create_dataset('n_sar',
+                               data=np.asarray(obs['n_sar'], dtype=int))
+        # 估计的 ramp 对 InSAR 观测的贡献及逐 track 标记
+        if obs.get('d_sar_ramp') is not None:
+            grp.create_dataset('d_sar_ramp',
+                               data=np.asarray(obs['d_sar_ramp']),
+                               compression='gzip')
+        if obs.get('sar_ramp') is not None:
+            grp.create_dataset('sar_ramp',
+                               data=np.asarray(obs['sar_ramp'], dtype=bool))
 
         # fault geometry
         grp = h5.create_group('flt')
@@ -80,13 +96,23 @@ def write_solution_h5(filename, obs, fault, solution):
         grp = h5.create_group('sol')
         for key in ('slip', 'r', 'misfit', 'dhat'):
             grp.create_dataset(key, data=solution[key], compression='gzip')
+        # optional metadata: smoothing factors, final model index, ramp, etc.
+        for key in ('smo_facts', 'ruff', 'chosen_index',
+                    'ramp_sar', 'sar_ramp_flag'):
+            value = solution.get(key)
+            if value is None:
+                continue
+            value = np.asarray(value)
+            if value.size == 0:
+                continue
+            grp.create_dataset(key, data=value, compression='gzip')
 
 
 # --------------------------------------------------------------------------- #
 # Observed / modeled / residual data
 # --------------------------------------------------------------------------- #
 def write_gps_data(llh, d_obs, d_mod, sigma=None, station=None,
-                   outdir='.', prefix='gps'):
+                   outdir='.', prefix='gps', parts=None):
     '''
     Write observed, modeled and residual GPS data as GMT vectors.
 
@@ -98,6 +124,8 @@ def write_gps_data(llh, d_obs, d_mod, sigma=None, station=None,
         station  = optional station names, (n,)
         outdir   = output directory
         prefix   = file name prefix
+        parts    = subset of ('obs', 'mod', 'res'), plus the *_up variants
+                   when ndim == 3; default all
 
     Output files (n names as above):
         {prefix}_obs.gmtvec, {prefix}_mod.gmtvec, {prefix}_res.gmtvec
@@ -140,13 +168,21 @@ def write_gps_data(llh, d_obs, d_mod, sigma=None, station=None,
             ('res_up', 0, d_obs[:, 2] - d_mod[:, 2], 0, 0),
         ]
 
+    site = "    Site\n" if station is not None else "\n"
     header_2d = ("#      Lon             Lat        East(mm)       North(mm)  "
-                 "SigE(mm)  SigN(mm)  Corr    Site\n")
+                 "SigE(mm)  SigN(mm)  Corr" + site)
     header_up = ("#      Lon             Lat        NULL(mm)          Up(mm)  "
-                 "NULL(mm)  SigU(mm)  Corr    Site\n")
+                 "NULL(mm)  SigU(mm)  Corr" + site)
+
+    parts = None if parts is None else {str(p) for p in parts}
 
     files = []
     for name, east, north, sig_e, sig_n in output_cfg:
+        # 'obs_up'/'mod_up'/'res_up' belong to the same base part as 'obs'
+        # etc., so selecting ('obs',) also writes the vertical component.
+        base = name[:-3] if name.endswith('_up') else name
+        if parts is not None and base not in parts:
+            continue
         columns = {
             'lon': llh[:, 1],
             'lat': llh[:, 0],
@@ -160,21 +196,20 @@ def write_gps_data(llh, d_obs, d_mod, sigma=None, station=None,
             columns['station'] = station
 
         fname = os.path.join(outdir, '%s_%s.gmtvec' % (prefix, name))
-        pd.DataFrame(columns).to_csv(fname, sep='\t', index=False,
-                                     float_format='%10.4f', header=False)
-
-        # pandas writes the body only; prepend the historical header
-        with open(fname) as fid:
-            content = fid.read()
         header = header_up if name.endswith('up') else header_2d
+        # Write the header first and append the body: one pass instead of
+        # writing the body, reading it back and rewriting header + body.
         with open(fname, 'w') as fid:
-            fid.write(header + content)
+            fid.write(header)
+        pd.DataFrame(columns).to_csv(fname, sep='\t', index=False,
+                                     float_format='%10.4f', header=False,
+                                     mode='a')
         files.append(fname)
 
     return files
 
 
-def write_lev_data(llh, d_obs, d_mod, outdir='.', prefix='lev'):
+def write_lev_data(llh, d_obs, d_mod, outdir='.', prefix='lev', parts=None):
     '''
     Write modeled and residual leveling data.
 
@@ -184,7 +219,7 @@ def write_lev_data(llh, d_obs, d_mod, outdir='.', prefix='lev'):
         d_mod  = modeled values, (n,)
 
     Output files:
-        {prefix}_mod.xyz, {prefix}_res.xyz with columns lon lat value
+        {prefix}_obs.xyz, {prefix}_mod.xyz, {prefix}_res.xyz with columns lon lat value
     '''
     llh = np.asarray(llh)
     if llh.size == 0:
@@ -194,8 +229,12 @@ def write_lev_data(llh, d_obs, d_mod, outdir='.', prefix='lev'):
     d_mod = np.asarray(d_mod).reshape(-1)
     lon, lat = llh[:, 1], llh[:, 0]
 
+    parts = None if parts is None else {str(p) for p in parts}
+
     files = []
-    for name, value in (('mod', d_mod), ('res', d_obs - d_mod)):
+    for name, value in (('obs', d_obs), ('mod', d_mod), ('res', d_obs - d_mod)):
+        if parts is not None and name not in parts:
+            continue
         fname = os.path.join(outdir, '%s_%s.xyz' % (prefix, name))
         np.savetxt(fname, np.column_stack((lon, lat, value)),
                    fmt='%10.4f\t%10.4f\t%10.2f')
@@ -203,7 +242,8 @@ def write_lev_data(llh, d_obs, d_mod, outdir='.', prefix='lev'):
     return files
 
 
-def write_sar_data(llh, d_obs, d_mod, n_sar=None, outdir='.', prefix='sar'):
+def write_sar_data(llh, d_obs, d_mod, n_sar=None, outdir='.', prefix='sar',
+                   parts=None):
     '''
     Write modeled and residual InSAR data, one file per track.
 
@@ -213,8 +253,9 @@ def write_sar_data(llh, d_obs, d_mod, n_sar=None, outdir='.', prefix='sar'):
         d_mod  = modeled LOS values, (n,)  (raw model, e.g. sol.dhat)
         n_sar  = optional number of points in each SAR track
 
-    Output files:
-        {prefix}_mod_{track}.xyz, {prefix}_res_{track}.xyz
+    Output files (one triplet per non-empty track):
+        {prefix}_obs_{track}.xyz, {prefix}_mod_{track}.xyz,
+        {prefix}_res_{track}.xyz
     '''
     llh = np.asarray(llh)
     if llh.size == 0:
@@ -233,16 +274,73 @@ def write_sar_data(llh, d_obs, d_mod, n_sar=None, outdir='.', prefix='sar'):
 
     lon, lat = llh[:, 1], llh[:, 0]
     header = 'Lon  Lat  LOS(mm)'
+    parts = None if parts is None else {str(p) for p in parts}
 
     files = []
     start = 0
     for i, count in enumerate(counts):
         end = start + count
-        for name, value in (('res', d_obs[start:end] - d_mod[start:end]),
-                            ('mod', d_mod[start:end])):
-            fname = os.path.join(outdir, '%s_%s_%d.xyz' % (prefix, name, i + 1))
+        # 空 track 不写文件，保证观测/模拟文件数一致
+        if count > 0:
+            for name, value in (('obs', d_obs[start:end]),
+                                ('mod', d_mod[start:end]),
+                                ('res', d_obs[start:end] - d_mod[start:end])):
+                if parts is not None and name not in parts:
+                    continue
+                fname = os.path.join(outdir, '%s_%s_%d.xyz' % (prefix, name, i + 1))
+                np.savetxt(fname,
+                           np.column_stack((lon[start:end], lat[start:end], value)),
+                           header=header, fmt='%10.4f\t%10.4f\t%10.2f')
+                files.append(fname)
+        start = end
+
+    return files
+
+
+def write_sar_ramp_data(llh, d_ramp, n_sar=None, outdir='.',
+                        prefix='sar_ramp', flags=None):
+    '''
+    Write the estimated ramp contribution, one file per InSAR track.
+
+    Input:
+        llh    = (n, 2) array of [lat, lon]
+        d_ramp = estimated ramp value per point, (n,)
+        n_sar  = optional number of points in each SAR track
+        flags  = optional per-track booleans; only True tracks are written
+
+    Output files:
+        {prefix}_{track}.xyz with columns lon lat ramp
+    '''
+    llh = np.asarray(llh)
+    if llh.size == 0:
+        return []
+
+    d_ramp = np.asarray(d_ramp).reshape(-1)
+    if n_sar is None:
+        counts = [len(llh)]
+    elif np.isscalar(n_sar):
+        counts = [int(n_sar)]
+    else:
+        counts = [int(v) for v in np.asarray(n_sar).reshape(-1)]
+
+    if flags is None:
+        flags = [True] * len(counts)
+    else:
+        flags = [bool(v) for v in np.asarray(flags).reshape(-1)]
+
+    lon, lat = llh[:, 1], llh[:, 0]
+    header = 'Lon  Lat  Ramp(mm)'
+
+    files = []
+    start = 0
+    for i, count in enumerate(counts):
+        end = start + count
+        # 只输出真正估计了 ramp 的非空 track
+        if count > 0 and i < len(flags) and flags[i]:
+            fname = os.path.join(outdir, '%s_%d.xyz' % (prefix, i + 1))
             np.savetxt(fname,
-                       np.column_stack((lon[start:end], lat[start:end], value)),
+                       np.column_stack((lon[start:end], lat[start:end],
+                                        d_ramp[start:end])),
                        header=header, fmt='%10.4f\t%10.4f\t%10.2f')
             files.append(fname)
         start = end
@@ -375,9 +473,12 @@ def write_gmt_slip(filename, vertices, values, header='# Fault slip model',
 # --------------------------------------------------------------------------- #
 def write_summary(filename, ndim, n_gps, n_sar, n_lev, flttype,
                   nstrike, ndip, smo_facts, misfit_gps, misfit_sar,
-                  n_d_gps, n_d_sar, moment, mode='a'):
+                  n_d_gps, n_d_sar, moment, mode='w'):
     '''
-    Append a human-readable inversion summary.
+    Write a human-readable inversion summary.
+
+    ``mode='w'`` (default) overwrites any previous summary; pass ``'a'`` to
+    append explicitly.
     '''
     with open(filename, mode) as fid:
         fid.write('#*#*#*#*#*#*#*#*#*#Geodetic Data Summary#*#*#*#*#*#*#*#*#*#*\n')
@@ -419,14 +520,14 @@ def write_lcurve(filename, ruff, misfit, smo_facts, moment):
     '''
     Write roughness / misfit / smoothing-factor / moment trade-off table.
 
-    Returns False when there are fewer than three smoothing factors.
+    Returns False when there are fewer than two smoothing factors.
     '''
     smo_facts = np.asarray(smo_facts)
-    if len(smo_facts) < 3:
+    if len(smo_facts) < 2:
         return False
 
     ruff_misfit = np.column_stack((ruff, misfit, smo_facts, moment))
-    header = " Ruffness\t Misfit\t Smoothing_factor\t Moment"
+    header = " Ruffness\t Misfit\t Smoothing_factor\t Mo\t Mw"
     np.savetxt(filename, ruff_misfit, header=header,
                fmt='%10.2f\t%10.2f\t%10.4f\t%10.2e\t%10.2f')
     return True
@@ -435,12 +536,15 @@ def write_lcurve(filename, ruff, misfit, smo_facts, moment):
 # --------------------------------------------------------------------------- #
 # Archiving
 # --------------------------------------------------------------------------- #
-def archive_files(dest_dir, patterns=DEFAULT_ARCHIVE_PATTERNS, src_dir='.'):
+def archive_files(dest_dir, patterns=DEFAULT_ARCHIVE_PATTERNS, src_dir='.',
+                  overwrite=True):
     '''
     Move output files matching ``patterns`` into ``dest_dir``.
 
     Returns the list of moved source paths.  When ``dest_dir`` is empty or is
-    the current directory, nothing is moved.
+    the current directory, nothing is moved.  Existing files are overwritten
+    (with a warning) when ``overwrite`` is true; otherwise they are kept and
+    the new source file stays in ``src_dir``.
     '''
     if not dest_dir:
         logging.error('The input archive directory is null')
@@ -455,7 +559,17 @@ def archive_files(dest_dir, patterns=DEFAULT_ARCHIVE_PATTERNS, src_dir='.'):
     moved = []
     for pattern in patterns:
         for path in glob.glob(os.path.join(src_dir, pattern)):
-            shutil.move(path, os.path.join(dest_dir, os.path.basename(path)))
+            target = os.path.join(dest_dir, os.path.basename(path))
+            if os.path.exists(target):
+                if not overwrite:
+                    logging.warning(
+                        'Archive target %s already exists; leaving %s in place.',
+                        target, path)
+                    continue
+                logging.warning(
+                    'Archive target %s already exists; overwriting it with %s.',
+                    target, path)
+            shutil.move(path, target)
             moved.append(path)
 
     logging.info('Archived %d file(s) into %s.' % (len(moved), dest_dir))

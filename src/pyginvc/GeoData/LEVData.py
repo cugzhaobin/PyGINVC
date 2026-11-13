@@ -46,10 +46,12 @@ class LEVData(object):
         # Read Level Data
         #
         if levfile != '':
-            logging.info('Loading level data now')
-    #       [d_lev, llh_lev, Len, sigma_lev, Icov_lev, W_lev] = GetLEVdata(levfile)
-            self.llh_lev     = zeros((0,0))
-            self.cov_lev     = np.eye(0)
+            # Loading used to be a silent no-op, which made an inversion with
+            # configured leveling data run as if no leveling were present.
+            raise NotImplementedError(
+                'Leveling data loading is not implemented yet; remove the '
+                '"leveling" section from the configuration or provide a '
+                'loader before running the inversion.')
         else:
             self.llh_lev     = zeros((0,2))
             self.d_lev       = zeros(0)

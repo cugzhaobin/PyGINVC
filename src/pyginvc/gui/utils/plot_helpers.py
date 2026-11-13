@@ -228,13 +228,13 @@ def plot_slip_3d(flt, sol, elevation=40, azimuth=-81, coordtype="llh") -> Figure
     ts_norm = ts / ts_max
 
     if coordtype == "llh":
-        x_cols = ["lt_lon", "rt_lon", "rb_lon", "lb_lon"]
-        y_cols = ["lt_lat", "rt_lat", "rb_lat", "lb_lat"]
-        z_cols = ["lt_dep", "rt_dep", "rb_dep", "lb_dep"]
+        x_cols = ["lb_lon", "rb_lon", "rt_lon", "lt_lon"]
+        y_cols = ["lb_lat", "rb_lat", "rt_lat", "lt_lat"]
+        z_cols = ["lb_dep", "rb_dep", "rt_dep", "lt_dep"]
     else:
-        x_cols = ["lt_e", "rt_e", "rb_e", "lb_e"]
-        y_cols = ["lt_n", "rt_n", "rb_n", "lb_n"]
-        z_cols = ["lt_u", "rt_u", "rb_u", "lb_u"]
+        x_cols = ["lb_e", "rb_e", "rt_e", "lt_e"]
+        y_cols = ["lb_n", "rb_n", "rt_n", "lt_n"]
+        z_cols = ["lb_u", "rb_u", "rt_u", "lt_u"]
 
     x = felem[x_cols].values
     y = felem[y_cols].values
@@ -250,14 +250,14 @@ def plot_slip_3d(flt, sol, elevation=40, azimuth=-81, coordtype="llh") -> Figure
     # Scatter for colorbar reference
     if coordtype == "llh":
         sc = ax.scatter(
-            felem["lt_lon"], felem["lt_lat"],
+            felem["lb_lon"], felem["lb_lat"],
             c=ts / 1000.0, cmap=plt.cm.jet, s=0.01, lw=0
         )
         ax.set_xlabel("Longitude")
         ax.set_ylabel("Latitude")
     else:
         sc = ax.scatter(
-            felem["lt_e"], felem["lt_n"],
+            felem["lb_e"], felem["lb_n"],
             c=ts / 1000.0, cmap=plt.cm.jet, s=0.01, lw=0
         )
         ax.set_xlabel("East (km)")

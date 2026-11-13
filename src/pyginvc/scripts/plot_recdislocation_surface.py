@@ -11,7 +11,7 @@
 import matplotlib
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from pyginvc.Geometry.Fault import Fault
+from pyginvc.Geometry.Patch import Fault
 import numpy as np
 import os, argparse
 
@@ -54,14 +54,14 @@ def main():
     azim              = args.azimuth
     elev              = args.elevation
     
-    geom              = np.genfromtxt(faultfile)
+    geom              = np.atleast_2d(np.genfromtxt(faultfile))
     nelem             = len(geom)
     flt               = Fault(faultfile, nelem, 1, False)
-#   geom              = flt.LoadFaultGeom(faultfile)
-#   [disgeom, origin] = flt.SetOrigin(geom)
-#   felem             = flt.FaultGeom2AllVertex(geom, disgeom)
-    felem             = flt.felem
-    slip              = felem[:,7]/felem[:,7].max()
+    flt.load_fault()
+    felem             = flt.FaultGeom2AllVertex()
+    slip              = felem["total_slip"].values
+    slip              = slip/slip.max() if slip.max() > 0 else slip
+    felem             = felem.values
     
     if coordtype == 'llh':
         x                 = felem[:, [9,12,15,18]]

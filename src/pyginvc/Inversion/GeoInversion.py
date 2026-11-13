@@ -7,9 +7,9 @@ import logging
 import numpy as np
 from scipy import optimize
 from scipy import linalg
-from pyginvc.Inversion.BaseInversion import BaseInversion
 from pyginvc.Geometry.Patch import Fault
 from pyginvc.GeoData.GeoData import GeoData
+from pyginvc.Inversion.BaseInversion import BaseInversion
 
 
 logging.basicConfig(
@@ -130,8 +130,10 @@ class GeoInversion(BaseInversion):
                 logging.info('SAR: WRSS/(N) %f' %(misfit_sar[i]/len_sar))
 
             misfit[i]     = r.dot(r)
-            smoothness[i] = sum( (smo_fact*slip[i].dot(G_lap)) * (smo_fact*slip[i].dot(G_lap)) )
-            ruff[i]       = sum( (slip[i].dot(G_lap)) * (slip[i].dot(G_lap)) )
+            # ||smo*L@s||^2, matching the penalty rows smo*G_lap in G2I.
+            lap_slip      = G_lap @ slip[i]
+            ruff[i]       = float(lap_slip.dot(lap_slip))
+            smoothness[i] = smo_fact ** 2 * ruff[i]
 
             # compute the moment
             Mo, Mw     = self.flt.moment(slip[i].reshape(-1,3), shear_modulus=shearmodulus)
@@ -155,249 +157,6 @@ class GeoInversion(BaseInversion):
         self.WSAR       = WSAR
         self.ramp       = ramp
             
-    def inversion(self):
-        '''
-        Invert for slip model
-        Mod by Zhao Bin, Mar 14, 2020. Rescale W with wgps
-        '''
-
-        d_gps         = self.data.d_gps
-        d_lev         = self.data.d_lev
-        d_sar         = self.data.d_sar
-        wgps          = self.dict_weight['wgps']
-        wsar          = self.dict_weight['wsar']
-        G             = self.green.G
-        G_sar         = self.green.G_sar
-        G_lap         = self.lap.G_lap
-        G_gps_ramp    = self.green.G_gps_ramp
-        G_sar_ramp    = self.green.G_sar_ramp
-        nsegs         = self.flt.nsegs
-        ndeps         = self.flt.ndeps
-        smoothfactor  = self.dict_weight['smoothfactor']
-        dict_bound    = self.dict_bound
-        n_ramp        = G_gps_ramp.shape[1]+G_sar_ramp.shape[1]
-            
-        # set SAR weights in data object
-        #self.data.set_wsar(wsar)
-        n_sar = self.data.n_sar
-        W     = wgps*self.data.W
-        WSAR  = np.zeros_like(self.data.W_sar)
-        if WSAR.size > 0:
-            for i in range(len(n_sar)):
-                idx0 = sum(n_sar[:i])
-                idx1 = sum(n_sar[:i+1])
-                WSAR[idx0:idx1,idx0:idx1] = wsar[i]*self.data.W_sar[idx0:idx1,idx0:idx1]
-            
-
-        # count number of smoothing factors
-        smo_fact_start, smo_fact_end,  smo_fact_step = smoothfactor
-        smo_facts      = np.arange(smo_fact_start, smo_fact_end, smo_fact_step)
-        nsmooth        = len(smo_facts) if len(smo_facts)>0 else 1
-
-        # Data dimensions
-        len_geod       = len(d_gps) + len(d_lev)
-        len_all        = len_geod   + len(d_sar)
-        nf             = self.flt.nf
-        d_lap          = np.zeros(3*nf)
-        D              = np.hstack((d_gps, d_lev))
-    
-        # get d2I and d2R
-        # if len_geod > 0:
-        #     if len_sar > 0:
-        #         d2I    = hstack((W.dot(D), wsar*d_sar, d_lap))
-        #         d2R    = hstack((W.dot(D), wsar*d_sar))
-        #     else:
-        #         d2I    = hstack((W.dot(D), d_lap))
-        #         d2R    = W.dot(D)
-        # else:
-        #     if len_sar > 0:
-        #         d2I    = hstack((wsar*d_sar, d_lap))
-        #         d2R    = wsar*d_sar
-        #     else:
-        #         logging.warning('Final error, no data to do inversion')
-        #         return
-
-        if len(d_sar) == 0:
-            d2I = np.hstack((W@D, d_lap))
-            d2R = W@D
-        else:
-            d2I = np.hstack((W@D, WSAR@d_sar, d_lap))
-            d2R = np.hstack((W@D, WSAR@d_sar))
-    
-        
-        
-        # init parameters
-        slip           = np.zeros((nsmooth, 3*nf))
-        sig_slip       = np.zeros((nsmooth, 3*nf))
-        # slipb          = zeros((nsmooth, 3*nf))
-        r              = np.zeros(len_all)
-        misfit         = np.zeros(nsmooth)
-        misfit_sar     = np.zeros(nsmooth)
-        misfit_gps     = np.zeros(nsmooth)
-        smoothness     = np.zeros(nsmooth)
-        ruff           = np.zeros(nsmooth)
-        moment         = np.zeros((nsmooth,2))
-        # ss_slip        = zeros((nsmooth, nf))
-        # ss_sig_slip    = zeros((nsmooth, nf))
-        # ds_slip        = zeros((nsmooth, nf))
-        # ds_sig_slip    = zeros((nsmooth, nf))
-        # openning       = zeros((nsmooth, nf))
-        # op_sig_slip    = zeros((nsmooth, nf))
-        #G2I            = zeros((len(D)+nf, nf))
-        ramp           = np.zeros((nsmooth, n_ramp))
-        sar_switch     = 0
-        
-        # if len(d_sar) > 0:
-        #     slip           = zeros((nsmooth, 3*nf+3))
-        #     sig_slip       = zeros((nsmooth, 3*nf+3))
-        #     slipb          = zeros((nsmooth, 3*nf+3))
-        #     sar_switch     = 1
-
-        # if 'sar_plane_range' in dict_bound.keys() and len(G_sar)>3:
-        #     splane_range   = dict_bound['sar_plane_range']
-        #     if len(splane_range) == 0:
-        #         G_sar[:,-3:] = 0.0
-    
-        if dict_bound['bound_switch']:
-            [bu, bl]       = self.set_bounds(nsegs, ndeps, sar_switch, **dict_bound)  
-            if n_ramp>0:
-                bl = np.hstack([bl, np.full(n_ramp, -np.inf)])
-                bu = np.hstack([bu, np.full(n_ramp,  np.inf)])
-            # print the status
-            logging.info('Boundaries for constrained linear is constructed.')
-        
-        # for each smooth factor   
-        for i, smo_fact in enumerate(smo_facts):
-            
-            # print the status
-            logging.info('Inverting for No. %d with smoothing factor %f' %(i+1, smo_fact))
-            
-            # scale the G_lap
-            G_laps     = smo_fact*G_lap
-                        
-            # if we use InSAR data to do inversion
-            # if len_sar > 0:
-            #     # MOD By Zhao Bin, Jan 7 2017
-            #     if len(wsar) == len_sar:
-            #         wsar = wsar.reshape((len_sar,1))
-    
-            #     # and if we use GPS and Level data to do inversion, combing all Green functions
-            #     if len_geod > 0:
-            #         G2I    = vstack((hstack((W.dot(G), zeros((len_geod,3)))), wsar*G_sar, hstack((G_laps, zeros((nf*3,3))))))
-            #     else:
-            #         G2I    = vstack((wsar*G_sar, hstack((G_laps, zeros((nf*3,3))))))
-            # else:
-            #     G2I        = vstack((W.dot(G), G_laps))
-            if len(G) == 0:
-                G = G.reshape(-1,3*nf)
-            if len(G_sar) == 0:
-                G_sar = G_sar.reshape(-1,3*nf)
-            WG     = W@G
-            WG_sar = WSAR @ G_sar
-            if len(G) == 0:
-                WG = WG.reshape(-1, nf*3)
-            if len(G_sar) == 0:
-                WG_sar = WG_sar.reshape(-1, nf*3)
-                G2I = np.vstack((WG, G_laps))
-                Gramp = np.vstack([ W @ G_gps_ramp,
-                                   np.zeros((G_laps.shape[0], n_ramp)) ])
-            else:
-                G2I = np.vstack((WG, WG_sar, G_laps))
-                Gramp = np.vstack([ linalg.block_diag(G_gps_ramp, G_sar_ramp),
-                                   np.zeros((G_laps.shape[0], n_ramp)) ])
-            G2I = np.column_stack((G2I, Gramp))
-            
-            # invert the matrix G2I                    
-            Ginv        = np.linalg.pinv(G2I)
-            slip[i]     = Ginv.dot(d2I)[0:3*nf]
-            cov_slip    = Ginv.dot(Ginv.T)[0:3*nf,0:3*nf]
-            sig_slip[i] = np.sqrt(np.diag(cov_slip))
-
-            logging.info('Unconstrained linear least square finished.')
-    
-            # if constrained linear least square method is used
-            if dict_bound['bound_switch']:
-                res = optimize.lsq_linear(G2I, d2I, (bl, bu), method='bvls', lsmr_tol='auto')
-                slip[i] = res.x[0:3*nf]
-                ramp[i] = res.x[3*nf:]
-
-                logging.info('Constrained linear least square finished.')
-                
-            # if len(d_sar) > 0:
-            #     if len(G) == 0:
-            #         dhat = G_sar.dot(slip[scount,:])
-            #     else:
-            #         dhat = vstack((hstack((G, zeros((len_geod,3)))), G_sar)).dot(slip[scount,:])
-    
-            # else:
-            #     dhat = G.dot(slip[scount,:])
-            # dhat = G2I[0:len(d2R)] @ res.x
-            dhat = np.column_stack((
-                np.vstack((G, G_sar)),
-                linalg.block_diag(G_gps_ramp, G_sar_ramp)
-                )) @ res.x
-            
-            if len_geod > 0:
-                r[0:len_geod] = d2R[0:len_geod] - W.dot(dhat[0:len_geod])
-                r_gps         = r[0:len_geod]
-            
-            # By Zhao Bin Jan 7 2017
-            r[len_geod:len_all] = d2R[len_geod:len_all] - WSAR @ dhat[len_geod:len_all]
-            r_sar               = r[len_geod:len_all]
-    #       rnk[scount] = rank(G2I)
-    
-            if len(d_gps) > 0:
-                n_gps = len(d_gps)
-                logging.info('GPS Weighted Residual Sum of Squares (WRSS) %10.3f' %(r_gps.dot(r_gps)))
-                logging.info('GPS: WRSS/(N) %f' %(r_gps.dot(r_gps)/n_gps))
-                misfit_gps[i] = r_gps.dot(r_gps)
-                
-                
-            if len(d_sar) > 0:
-                n_sar = len(d_sar)
-                logging.info('SAR Weighted Residual Sum of Squares (WRSS) %10.3f' %(r_sar.dot(r_sar)))
-                logging.info('SAR: WRSS/(N) %f' %(r_sar.dot(r_sar)/n_sar))
-                misfit_sar[i] = r_sar.dot(r_sar)
-            
-            misfit[i] = r.dot(r)
-            
-            smoothness[i] = sum( (smo_fact*slip[i].dot(G_lap)) * (smo_fact*slip[i].dot(G_lap)) )
-            ruff[i]       = sum( (slip[i].dot(G_lap)) * (slip[i].dot(G_lap)) )
-            
-            
-            # print slip
-            # for k in range(nf):
-            #     ss_slip[scount, k]      = slip[scount, 3*k]
-            #     ss_sig_slip[scount, k]  = sig_slip[scount, 3*k]
-            #     dip_slip[scount, k]     = slip[scount, 3*k+1]
-            #     dip_sig_slip[scount, k] = sig_slip[scount, 3*k+1]
-            #     openning[scount, k]     = slip[scount, 3*k+2]
-            #     op_sig_slip[scount, k]  = sig_slip[scount, 3*k+2]
-    
-    
-            # compute the moment
-            shearmodulus = self.green.modulus
-            [Mo, Mw]     = self.flt.moment(slip[i], shear_modulus=shearmodulus)
-            moment[i]    = np.array([Mo, Mw])            
-            
-            # print the status
-            logging.info('Geodetic Moment Magnitude M0 = %E' %(Mo))
-            logging.info('Geodetic Moment Magnitude Mw = %f' %(Mw))
-    
-        self.ruff       = ruff
-        self.misfit_gps = misfit_gps
-        self.misfit_sar = misfit_sar
-        self.misfit     = misfit
-        self.slip       = slip
-        self.sig_slip   = sig_slip
-        self.r          = r
-        self.dhat       = dhat
-        self.moment     = moment
-        self.smo_facts  = smo_facts
-        self.smoothness = smoothness
-        self.WSAR       = WSAR
-        self.ramp       = ramp
-                
     def assemble_design_matrix(self, smo_fact):
         """
         Assemble desgin matrix for inversion.

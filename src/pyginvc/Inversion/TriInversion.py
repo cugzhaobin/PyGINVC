@@ -126,8 +126,10 @@ class TriInversion(BaseInversion):
                 logging.info('SAR: WRSS/(N) %f' %(misfit_sar[i]/len_sar))
 
             misfit[i]     = r.dot(r)
-            smoothness[i] = sum( (smo_fact*slip[i].dot(G_lap)) * (smo_fact*slip[i].dot(G_lap)) )
-            ruff[i]       = sum( (slip[i].dot(G_lap)) * (slip[i].dot(G_lap)) )
+            # ||smo*L@s||^2, matching the penalty rows smo*G_lap in G2I.
+            lap_slip      = G_lap @ slip[i]
+            ruff[i]       = float(lap_slip.dot(lap_slip))
+            smoothness[i] = smo_fact ** 2 * ruff[i]
 
             # compute the moment
             Mo, Mw     = self.flt.moment(slip[i].reshape(-1,3), shear_modulus=shearmodulus)
@@ -354,8 +356,10 @@ class TriInversion(BaseInversion):
             
             misfit[i] = r.dot(r)
             
-            ruff[i]       = sum( (slip[i].dot(G_lap)) * (slip[i].dot(G_lap)) )
-            smoothness[i] = sum( (smo_fact*slip[i].dot(G_lap)) * (smo_fact*slip[i].dot(G_lap)) )
+            # ||smo*L@s||^2, matching the penalty rows smo*G_lap in G2I.
+            lap_slip      = G_lap @ slip[i]
+            ruff[i]       = float(lap_slip.dot(lap_slip))
+            smoothness[i] = smo_fact ** 2 * ruff[i]
             
             
             # print slip

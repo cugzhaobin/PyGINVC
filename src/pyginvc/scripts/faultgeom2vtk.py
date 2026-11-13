@@ -4,6 +4,7 @@
 
 from pyginvc.Geometry.Patch import Fault
 import argparse
+import numpy as np
 
 def main():
     parser = argparse.ArgumentParser(description="Convert FaultGeom file to VTK format.")
@@ -14,7 +15,8 @@ def main():
     fltfile = args.faultfile
     origin  = args.origin
     scale   = args.scale
-    flt     = Fault(fltfile, 1, 1, False, origin=origin)
+    nfault = len(np.atleast_2d(np.genfromtxt(fltfile, comments='#')))
+    flt    = Fault(fltfile, nfault, 1, False, origin=origin)
     flt.load_fault()
     flt.FaultGeom2VTK(scale=scale)
 

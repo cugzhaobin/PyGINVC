@@ -121,8 +121,11 @@ class SlipInversion:
         # View observation VS modeling
         #
         if dict_export['view'] is True:
-            View.plot_obs_mod(outpath+'/solutions.h5', scale=dict_export['vecscale'])
-            View.plot_slip_3d(outpath+'/solutions.h5')
+            View.plot_obs_mod(outpath+'/solutions.h5', scale=dict_export.get('vecscale'))
+            View.plot_sar_ramp(outpath+'/solutions.h5')
+            View.plot_slip_3d(outpath+'/solutions.h5',
+                              depth_exaggeration=dict_export.get('depth_exaggeration', 2.0))
+            View.plot_lcurve(outpath+'/solutions.h5')
 
 def main():
     parser = argparse.ArgumentParser(description="Invert slip distribution on rectangular patches from geodetic data.")

@@ -32,7 +32,7 @@ def faultgeom2origin(faultfile):
     origin  = np.array([np.mean(geom[:,[3,5]]), np.mean(geom[:,[4,6]])])
     return origin
 
-if __name__ == '__main__':
+def main():
     if len(sys.argv) != 3:
         print(' calc_stress.py <faultgeom> <calfile>')
         print(' calfile : lon lat dep(km) strike dip rake friction')
@@ -84,3 +84,7 @@ if __name__ == '__main__':
 #       os.remove('tmp.inp')
     if os.path.isfile('tmp.strss'):
         os.remove('tmp.strss')
+
+
+if __name__ == '__main__':
+    main()

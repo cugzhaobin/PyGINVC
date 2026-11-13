@@ -5,7 +5,9 @@ from numpy import sin, cos, sqrt, deg2rad, rad2deg
 from numpy import linspace, array, zeros, savetxt
 from pyproj import Proj
 
-__all__ = ['llh2localxy','polyconic', 'xy2llh', 'vpvs2nu', 'vpvsrho2K', 'vsrho2mu', 'makegrids']
+__all__ = ['llh2localxy', 'llh2localxy_batch', 'polyconic', 'llh2utm',
+           'llh2utm_batch', 'xy2llh', 'vpvs2nu', 'vpvsrho2K', 'vsrho2mu',
+           'makegrids']
 
 
 def distance3d(pt1, pt2):
@@ -45,6 +47,33 @@ def llh2utm(llh, llh_org):
     return np.array([e_loc, n_loc])
 
 
+def llh2utm_batch(llh, llh_org):
+    '''
+    Vectorised version of llh2utm.
+
+    Builds the transverse Mercator projection only once and converts all
+    points in a single call.  This matters for large InSAR data sets, where
+    constructing a pyproj.Proj object per point dominates the runtime.
+
+    Input:
+      llh    - (n,2) array or list of [lat, lon] in degree
+      ll_org - reference point (lat, lon)
+    Output:
+      xy     - (n,2) array, east(km), north(km)
+    '''
+    pts = np.asarray(llh, dtype=float)
+    if pts.size == 0:
+        return np.empty((0, 2))
+    pts = pts.reshape(-1, 2)
+
+    P      = Proj(ellps='WGS84', proj='tmerc', lon_0=llh_org[1])
+    en     = P(pts[:, 1], pts[:, 0])
+    en_org = P(llh_org[1], llh_org[0])
+
+    return np.column_stack(((np.asarray(en[0]) - en_org[0]) / 1000.0,
+                            (np.asarray(en[1]) - en_org[1]) / 1000.0))
+
+
 def utm2llh(xy, origin):
     '''
     convert coordinate from [east, north] to [lat, lon] w.r.t original coordinate
@@ -78,19 +107,19 @@ def utm2llh(xy, origin):
 def llh2localxy(llh, ll_org):
     '''
     convert coordinate from lat lon to XY
-    
+
     Input:
       llh    - inout latitude and longitude in degree
       ll_org - refernence point (lat, lon)
     Output:
       xy     - east(km), north(km)
-     
+
     '''
 
- 
+
     lat = 3600*llh[0]
     lon = 3600*llh[1]
-    
+
     Lat_Orig  = 3600.0 * ll_org[0]
     Diff_long = 3600.0 * ll_org[1] - lon
     xy = polyconic(lat, Diff_long, Lat_Orig)
@@ -99,6 +128,31 @@ def llh2localxy(llh, ll_org):
     xy[1] =  xy[1]/1000.0
 
     return xy
+
+
+def llh2localxy_batch(llh, ll_org):
+    '''
+    Vectorised version of llh2localxy.
+
+    Input:
+      llh    - (n, 2) array or list of [lat, lon] in degree
+      ll_org - reference point (lat, lon)
+    Output:
+      xy     - (n, 2) array, east(km), north(km)
+    '''
+    pts = np.asarray(llh, dtype=float)
+    if pts.size == 0:
+        return np.empty((0, 2))
+    pts = pts.reshape(-1, 2)
+
+    lat = 3600.0 * pts[:, 0]
+    lon = 3600.0 * pts[:, 1]
+
+    Lat_Orig  = 3600.0 * ll_org[0]
+    Diff_long = 3600.0 * ll_org[1] - lon
+    x, y = _polyconic_vec(lat, Diff_long, Lat_Orig)
+
+    return np.column_stack((-x / 1000.0, y / 1000.0))
 
 
 def llh2local(llh, origin):
@@ -213,10 +267,11 @@ def geod2xy(o_lon, o_lat, lon, lat):
 
     
 # Written by Zhao Bin, Insitutute of Seismology, CEA. Jan 23th, 2016
-def polyconic(Lat, Diff_long, Lat_Orig):
-    p1 = Lat_Orig
-    p2 = Lat
-    il = Diff_long
+def _polyconic_vec(Lat, Diff_long, Lat_Orig):
+    '''Scalar/array polyconic projection; returns (x, y).'''
+    p1 = np.asarray(Lat_Orig, dtype=float)
+    p2 = np.asarray(Lat, dtype=float)
+    il = np.asarray(Diff_long, dtype=float)
 
     arcone = 4.8481368e-6
     esq = 6.7686580e-3
@@ -237,9 +292,13 @@ def polyconic(Lat, Diff_long, Lat_Orig):
     ipr = ip *arcone
     pr = ((p2 + p1) /2.) * arcone
     y = ((((a0*ipr) - ((a2*cos(2.*pr))*sin(ipr))) + ((a4*cos(4.*pr))*sin(2.*ipr))) - ((a6*cos(6.*pr))*sin(3.*ipr))) + ((a8*cos(8.*pr))*sin(4.*ipr))
-    xy = array([x, y])
- 
-    return xy
+
+    return x, y
+
+
+def polyconic(Lat, Diff_long, Lat_Orig):
+    x, y = _polyconic_vec(Lat, Diff_long, Lat_Orig)
+    return array([x, y])
     
     
     

@@ -6,7 +6,7 @@ Created on Fri Apr 26 09:34:53 2019
 """
 import numpy as np
 import logging
-import h5py, sys
+import h5py
 logging.basicConfig(
                     level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
@@ -29,8 +29,25 @@ class RectPlaneLap(object):
         self.nsegs = nsegs
         self.ndeps = ndeps
         self.bcs   = bcs
-        self.method= method
-    
+        method     = str(method).strip()
+        if method not in ('1', '4'):
+            raise ValueError(
+                "Unsupported Laplacian method %r; use '1' (Laplacian) or "
+                "'4' (Tikhonov)." % (method,))
+        self.method = method
+
+    def _check_bcs(self, bcs):
+        '''Normalise and validate the boundary-condition list.'''
+        bcs = np.asarray([] if bcs is None else bcs, dtype=int).ravel()
+        if bcs.size not in (0, 4):
+            raise ValueError(
+                'bcs must be empty or a four-element list (top, bottom, '
+                'end, start), got %r.' % (bcs.tolist(),))
+        if bcs.size and not np.isin(bcs, [0, 1]).all():
+            raise ValueError(
+                'bcs entries must be 0 or 1, got %r.' % (bcs.tolist(),))
+        return bcs
+
     def build_laps(self):
         if self.method == '1':
             self.GenLap(self.nsegs, self.ndeps, self.bcs)
@@ -57,18 +74,22 @@ class RectPlaneLap(object):
         '''
         
         if nsegsa < 2 or ndepsa < 2:
-            logging.fatal("nsegs or ndeps should > 1. or use Tikhonov method.")
-            sys.exit()
-        
+            raise ValueError(
+                'nsegs and ndeps must both be >= 2 for Laplacian smoothing; '
+                'got %d and %d. Use Tikhonov (method 4) instead.'
+                % (nsegsa, ndepsa))
+
+        bcs = self._check_bcs(bcs)
+
         # init parameters
         G_lapn = np.array([])
         G_lap  = np.array([])
-    
+
         # for each plane
         for i in range(nplanes):
-            if np.size(bcs) == 4:
+            if bcs.size == 4:
                 nlap   = self.MakeLapF_edge(nsegsa, ndepsa, bcs)
-            elif np.size(bcs) == 0:
+            else:
                 nlap   = self.MakeLapF(nsegsa, ndepsa)
             G_lapn = np.array([])
             
@@ -110,8 +131,20 @@ class RectPlaneLap(object):
         
         # number of model vectors
         nmod = nsegs * ndeps
-        LAP  = np.zeros((3*nmod, 3*nmod))
-    
+        n3   = 3*nmod
+        LAP  = np.zeros((n3, n3))
+
+        def put(row0, col0, value):
+            '''Set the three component-diagonal cells of one stencil entry.
+
+            Columns outside the model vector are skipped, mirroring the
+            original loop, which only visited m in range(3*nmod).
+            '''
+            if 0 <= col0 < n3:
+                LAP[row0,     col0]     = value
+                LAP[row0 + 1, col0 + 1] = value
+                LAP[row0 + 2, col0 + 2] = value
+
         # for each depth
         for i in range(ndeps):
             # for each along-strike
@@ -121,159 +154,97 @@ class RectPlaneLap(object):
                 indb = 3*nsegs*(i+1) + 3*j
                 indl = 3*nsegs*i + 3*j - 1
                 indr = 3*nsegs*i + 3*j + 3
-                for m in range(3*nmod):
-                    if m == indm:
-                        LAP[indm, indm]     = -1
-                        LAP[indm+1, indm+1] = -1
-                        LAP[indm+2, indm+2] = -1
-                    elif m == inda:
-                        if i == 0 and j == 0:
-                            LAP[indm, inda]     = 0.0
-                            LAP[indm+1, inda+1] = 0.0
-                            LAP[indm+2, inda+2] = 0.0
-                        elif i == 0 and j > 0 and j < nsegs-1:
-                            LAP[indm, inda]     = 0.0
-                            LAP[indm+1, inda+1] = 0.0
-                            LAP[indm+2, inda+2] = 0.0
-                        elif i == 0 and j == nsegs-1:
-                            LAP[indm, inda]     = 0.0
-                            LAP[indm+1, inda+1] = 0.0
-                            LAP[indm+2, inda+2] = 0.0
-                        elif j == 0 and i > 0 and i < ndeps-1:
-                            LAP[indm, inda]     = 1.0/3
-                            LAP[indm+1, inda+1] = 1.0/3
-                            LAP[indm+2, inda+2] = 1.0/3
-                        elif j == 0 and i == ndeps-1:
-                            LAP[indm, inda]     = 0.5
-                            LAP[indm+1, inda+1] = 0.5
-                            LAP[indm+2, inda+2] = 0.5
-                        elif i == ndeps-1 and j > 0 and j < nsegs-1:
-                            LAP[indm, inda]     = 1./3
-                            LAP[indm+1, inda+1] = 1./3
-                            LAP[indm+2, inda+2] = 1./3
-                        elif i == ndeps-1 and j == nsegs-1:
-                            LAP[indm, inda]     = 0.5
-                            LAP[indm+1, inda+1] = 0.5
-                            LAP[indm+2, inda+2] = 0.5
-                        elif j == nsegs-1 and i > 0 and i < ndeps-1:
-                            LAP[indm, inda]     = 1./3
-                            LAP[indm+1, inda+1] = 1./3
-                            LAP[indm+2, inda+2] = 1./3
-                        else:
-                            LAP[indm, inda]     = 0.25
-                            LAP[indm+1, inda+1] = 0.25
-                            LAP[indm+2, inda+2] = 0.25
-                    elif m == indb:
-                        if i == 0 and j == 0:
-                            LAP[indm, indb]     = 0.5
-                            LAP[indm+1, indb+1] = 0.5
-                            LAP[indm+2, indb+2] = 0.5
-                        elif i == 0 and j > 0 and j < nsegs-1:
-                            LAP[indm, indb]     = 1./3
-                            LAP[indm+1, indb+1] = 1./3
-                            LAP[indm+2, indb+2] = 1./3
-                        elif i == 0 and j == nsegs-1:
-                            LAP[indm, indb]     = 0.5
-                            LAP[indm+1, indb+1] = 0.5
-                            LAP[indm+2, indb+2] = 0.5
-                        elif j == 0 and i > 0 and i < ndeps-1:
-                            LAP[indm, indb]     = 1./3
-                            LAP[indm+1, indb+1] = 1./3
-                            LAP[indm+2, indb+2] = 1./3
-                        elif j == 0 and i == ndeps-1:
-                            LAP[indm, indb]     = 0.0
-                            LAP[indm+1, indb+1] = 0.0
-                            LAP[indm+2, indb+2] = 0.0
-                        elif i == ndeps-1 and j > 0 and j < nsegs-1:
-                            LAP[indm, indb]     = 0.0
-                            LAP[indm+1, indb+1] = 0.0
-                            LAP[indm+2, indb+2] = 0.0
-                        elif i == ndeps-1 and j == nsegs-1:
-                            LAP[indm, indb]     = 0.0
-                            LAP[indm+1, indb+1] = 0.0
-                            LAP[indm+2, indb+2] = 0.0
-                        elif j == nsegs-1 and i > 0 and i < ndeps-1:
-                            LAP[indm, indb]     = 1./3
-                            LAP[indm+1, indb+1] = 1./3
-                            LAP[indm+2, indb+2] = 1./3
-                        else:
-                            LAP[indm, indb]     = 0.25
-                            LAP[indm+1, indb+1] = 0.25
-                            LAP[indm+2, indb+2] = 0.25
-                    elif m == indl:
-                        if i == 0 and j == 0:
-                            LAP[indm, indl]     = 0.0
-                            LAP[indm+1, indl+1] = 0.0
-                            LAP[indm+2, indl+2] = 0.0
-                        elif i == 0 and j > 0 and i < nsegs-1:
-                            LAP[indm, indl]     = 1./3
-                            LAP[indm+1, indl+1] = 1./3
-                            LAP[indm+2, indl+2] = 1./3
-                        elif i == 0 and j == nsegs-1:
-                            LAP[indm, indl]     = 0.5
-                            LAP[indm+1, indl+1] = 0.5
-                            LAP[indm+2, indl+2] = 0.5
-                        elif j == 0 and i > 0 and i < ndeps-1:
-                            LAP[indm, indl]     = 0.0
-                            LAP[indm+1, indl+1] = 0.0
-                            LAP[indm+2, indl+2] = 0.0
-                        elif j == 0 and i == ndeps:
-                            LAP[indm, indl]     = 0.0
-                            LAP[indm+1, indl+1] = 0.0
-                            LAP[indm+2, indl+2] = 0.0
-                        elif i == ndeps-1 and j > 0 and j < nsegs-1:
-                            LAP[indm, indl]     = 1./3
-                            LAP[indm+1, indl+1] = 1./3
-                            LAP[indm+2, indl+2] = 1./3
-                        elif i == ndeps-1 and j == nsegs-1:
-                            LAP[indm, indl]     = 0.5
-                            LAP[indm+1, indl+1] = 0.5
-                            LAP[indm+2, indl+2] = 0.5
-                        elif j == nsegs-1 and i > 0 and i < ndeps-1:
-                            LAP[indm, indl]     = 1./3
-                            LAP[indm+1, indl+1] = 1./3
-                            LAP[indm+2, indl+2] = 1./3
-                        else:
-                            LAP[indm, indl]     = 0.25
-                            LAP[indm+1, indl+1] = 0.25
-                            LAP[indm+2, indl+2] = 0.25
-                    elif m == indr:
-                        if i == 0 and j == 0:
-                            LAP[indm, indr]     = 0.5
-                            LAP[indm+1, indr+1] = 0.5
-                            LAP[indm+2, indr+2] = 0.5
-                        elif i == 0 and j > 0 and j < nsegs-1:
-                            LAP[indm, indr]     = 1./3
-                            LAP[indm+1, indr+1] = 1./3
-                            LAP[indm+2, indr+2] = 1./3
-                        elif i == 0 and j == nsegs-1:
-                            LAP[indm, indr]     = 0.0
-                            LAP[indm+1, indr+1] = 0.0
-                            LAP[indm+2, indr+2] = 0.0
-                        elif j == 0 and i > 0 and i < ndeps-1:
-                            LAP[indm, indr]     = 1./3
-                            LAP[indm+1, indr+1] = 1./3
-                            LAP[indm+2, indr+2] = 1./3
-                        elif j == 0 and i == ndeps-1:
-                            LAP[indm, indr]     = 0.5
-                            LAP[indm+1, indr+1] = 0.5
-                            LAP[indm+2, indr+2] = 0.5
-                        elif i == ndeps-1 and j > 0 and j < nsegs-1:
-                            LAP[indm, indr]     = 1./3
-                            LAP[indm+1, indr+1] = 1./3
-                            LAP[indm+2, indr+2] = 1./3
-                        elif i == ndeps-1 and j == nsegs-1:
-                            LAP[indm, indr]     = 0.0
-                            LAP[indm+1, indr+1] = 0.0
-                            LAP[indm+2, indr+2] = 0.0
-                        elif j == nsegs-1 and i > 0 and i < ndeps-1:
-                            LAP[indm, indr]     = 0.0
-                            LAP[indm+1, indr+1] = 0.0
-                            LAP[indm+2, indr+2] = 0.0
-                        else:
-                            LAP[indm, indr]     = 0.25
-                            LAP[indm+1, indr+1] = 0.25
-                            LAP[indm+2, indr+2] = 0.25
+
+                # centre
+                put(indm, indm, -1)
+
+                # up neighbour
+                if 0 <= inda < n3:
+                    if i == 0 and j == 0:
+                        value = 0.0
+                    elif i == 0 and j > 0 and j < nsegs-1:
+                        value = 0.0
+                    elif i == 0 and j == nsegs-1:
+                        value = 0.0
+                    elif j == 0 and i > 0 and i < ndeps-1:
+                        value = 1.0/3
+                    elif j == 0 and i == ndeps-1:
+                        value = 0.5
+                    elif i == ndeps-1 and j > 0 and j < nsegs-1:
+                        value = 1./3
+                    elif i == ndeps-1 and j == nsegs-1:
+                        value = 0.5
+                    elif j == nsegs-1 and i > 0 and i < ndeps-1:
+                        value = 1./3
+                    else:
+                        value = 0.25
+                    put(indm, inda, value)
+
+                # down neighbour
+                if 0 <= indb < n3:
+                    if i == 0 and j == 0:
+                        value = 0.5
+                    elif i == 0 and j > 0 and j < nsegs-1:
+                        value = 1./3
+                    elif i == 0 and j == nsegs-1:
+                        value = 0.5
+                    elif j == 0 and i > 0 and i < ndeps-1:
+                        value = 1./3
+                    elif j == 0 and i == ndeps-1:
+                        value = 0.0
+                    elif i == ndeps-1 and j > 0 and j < nsegs-1:
+                        value = 0.0
+                    elif i == ndeps-1 and j == nsegs-1:
+                        value = 0.0
+                    elif j == nsegs-1 and i > 0 and i < ndeps-1:
+                        value = 1./3
+                    else:
+                        value = 0.25
+                    put(indm, indb, value)
+
+                # left neighbour
+                if 0 <= indl < n3:
+                    if i == 0 and j == 0:
+                        value = 0.0
+                    elif i == 0 and j > 0 and i < nsegs-1:
+                        value = 1./3
+                    elif i == 0 and j == nsegs-1:
+                        value = 0.5
+                    elif j == 0 and i > 0 and i < ndeps-1:
+                        value = 0.0
+                    elif j == 0 and i == ndeps:
+                        value = 0.0
+                    elif i == ndeps-1 and j > 0 and j < nsegs-1:
+                        value = 1./3
+                    elif i == ndeps-1 and j == nsegs-1:
+                        value = 0.5
+                    elif j == nsegs-1 and i > 0 and i < ndeps-1:
+                        value = 1./3
+                    else:
+                        value = 0.25
+                    put(indm, indl, value)
+
+                # right neighbour
+                if 0 <= indr < n3:
+                    if i == 0 and j == 0:
+                        value = 0.5
+                    elif i == 0 and j > 0 and j < nsegs-1:
+                        value = 1./3
+                    elif i == 0 and j == nsegs-1:
+                        value = 0.0
+                    elif j == 0 and i > 0 and i < ndeps-1:
+                        value = 1./3
+                    elif j == 0 and i == ndeps-1:
+                        value = 0.5
+                    elif i == ndeps-1 and j > 0 and j < nsegs-1:
+                        value = 1./3
+                    elif i == ndeps-1 and j == nsegs-1:
+                        value = 0.0
+                    elif j == nsegs-1 and i > 0 and i < ndeps-1:
+                        value = 0.0
+                    else:
+                        value = 0.25
+                    put(indm, indr, value)
         return LAP
     
     

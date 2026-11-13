@@ -44,8 +44,15 @@ class GeoDataCollection(object):
             raise ValueError('files and configs must have the same length')
         self.files   = files
         self.configs = configs
-        for f in files:
-            self.kind_of(f)
+
+        # Group once at construction: pairs()/gps_data/... are called on every
+        # aggregation property below, and re-running kind_of on each call is
+        # pure overhead.  kind_of also validates the object types here.
+        cfgs = configs if configs is not None else [None] * len(files)
+        self._pairs = list(zip(files, cfgs))
+        self._by_kind = {'gps': [], 'sar': [], 'lev': []}
+        for f, c in self._pairs:
+            self._by_kind[self.kind_of(f)].append((f, c))
 
     # ------------------------------------------------------------------ #
     # Basic container protocol
@@ -69,10 +76,9 @@ class GeoDataCollection(object):
 
     def pairs(self, kind=None):
         '''Return (file object, config) for each file, optionally by kind.'''
-        cfgs = self.configs if self.configs is not None else [None] * len(self.files)
-        for f, c in zip(self.files, cfgs):
-            if kind is None or self.kind_of(f) == kind:
-                yield f, c
+        source = self._pairs if kind is None else self._by_kind.get(kind, ())
+        for f, c in source:
+            yield f, c
 
     def gps_pairs(self):
         return self.pairs('gps')
@@ -85,15 +91,15 @@ class GeoDataCollection(object):
 
     @property
     def gps_data(self):
-        return [f for f in self.files if self.kind_of(f) == 'gps']
+        return [f for f, _ in self._by_kind['gps']]
 
     @property
     def sar_data(self):
-        return [f for f in self.files if self.kind_of(f) == 'sar']
+        return [f for f, _ in self._by_kind['sar']]
 
     @property
     def lev_data(self):
-        return [f for f in self.files if self.kind_of(f) == 'lev']
+        return [f for f, _ in self._by_kind['lev']]
 
     # ------------------------------------------------------------------ #
     # Concatenation helpers

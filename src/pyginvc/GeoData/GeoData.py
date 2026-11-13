@@ -97,32 +97,41 @@ class GeoData:
 
         gps_data, sar_data, lev_data = [], [], []
         for gpsfile in gpsfiles:
+            if not gpsfile:
+                continue
             try:
                 gps = GPSData(gpsfile, gfiletype)
                 gps.load()
                 gps_data.append(gps)
             except Exception as e:
-                logging.info(f"Loading GPS file {gpsfile}: {e}")
+                logging.error(f"Failed to load GPS file {gpsfile}: {e}")
+                raise
         for sarfile in sarfiles:
+            if not sarfile:
+                continue
             try:
                 sar = SARData(sarfile)
                 sar.load()
                 sar_data.append(sar)
             except Exception as e:
-                logging.info(f"Loading SAR file {sarfile}: {e}")
+                logging.error(f"Failed to load SAR file {sarfile}: {e}")
+                raise
         for levfile in levfiles:
+            if not levfile:
+                continue
             try:
                 lev = LEVData(levfile)
                 lev.load()
                 lev_data.append(lev)
             except Exception as e:
-                logging.info(f"Loading LEV file {levfile}: {e}")
+                logging.error(f"Failed to load LEV file {levfile}: {e}")
+                raise
 
         # Now combine the data together
         if gps_data:
             self.llh_gps = np.vstack([item.llh_gps for item in gps_data])
             self.d_gps   = np.hstack([item.d_gps for item in gps_data])
-            self.cov_gps = np.hstack([item.cov_gps for item in gps_data])
+            self.cov_gps = self._merge_cov([item.cov_gps for item in gps_data])
             self.n_gps   = np.array([len(item.llh_gps) for item in gps_data])
             self.station_gps = np.hstack([item.station_gps for item in gps_data])
 
@@ -130,7 +139,7 @@ class GeoData:
             self.llh_sar = np.vstack([d.llh_sar for d in sar_data])
             self.d_sar   = np.hstack([d.d_sar for d in sar_data])
             self.unit    = np.vstack([d.unit  for d in sar_data])
-            self.cov_sar = np.hstack([d.cov_sar for d in sar_data])
+            self.cov_sar = self._merge_cov([d.cov_sar for d in sar_data])
             self.n_sar   = np.array([len(d.llh_sar) for d in sar_data])
 
         if lev_data:
@@ -145,6 +154,23 @@ class GeoData:
         # print processing status
         logging.info('Finished load geodetic data for inversion.')
         
+    @staticmethod
+    def _merge_cov(covs):
+        '''Merge 1-D variances / 2-D covariance matrices of several files.
+
+        Concatenating 2-D covariance matrices with ``np.hstack`` produced a
+        wrongly shaped array; block-diagonal is the correct composition for
+        independent data files.
+        '''
+        covs = [np.asarray(c) for c in covs]
+        covs = [c for c in covs if c.size > 0]
+        if not covs:
+            return np.array([])
+        if all(c.ndim == 1 for c in covs):
+            return np.concatenate([c.ravel() for c in covs])
+        return linalg.block_diag(*[np.diag(c) if c.ndim == 1 else c
+                                   for c in covs])
+
     def _to_list(self, file_input):
         if file_input is None:
             return []

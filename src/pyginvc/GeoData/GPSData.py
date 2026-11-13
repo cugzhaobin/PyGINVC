@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import numpy as np
-import os, sys, logging
+import os, logging
 
 logging.basicConfig(
                     level=logging.INFO,
@@ -31,7 +31,7 @@ class GPSData(object):
         self.Icov_gps    = np.array([])
         self.W_gps       = np.array([])
         self.station_gps = np.array([], dtype=object)
-        self.ndim        = 2  # Default to 3D data
+        self.ndim        = 2  # Default to 2D data (overwritten on load)
 
     def load(self):
         self.load_gps_data()
@@ -47,18 +47,18 @@ class GPSData(object):
         gpsfile   = self.gpsfile
         gfiletype = self.gpsfiletype
         if not os.path.exists(gpsfile):
-            logging.fatal(f"{gpsfile} file does not exit.")
+            raise FileNotFoundError('%s file does not exist.' % gpsfile)
 
         if gfiletype in ('GMT2D', 'IOS2D'):
             vel, llh_gps, cov_gps, station_gps = self.GetGMTdata(gpsfile)
-        
+
         elif gfiletype == 'GMT3D':
             vel, llh_gps, cov_gps, station_gps = self.GetGMT3Ddata(gpsfile);
-        
+
         elif gfiletype == 'IOS3D':
             vel, llh_gps, cov_gps, station_gps = self.GetIOS3Ddata(gpsfile);
         else:
-            logging.fatal(f'Unknown GPS file type: {gfiletype}')
+            raise ValueError('Unknown GPS file type: %r' % (gfiletype,))
 
         self.nsta        = len(llh_gps)
         self.ndim        = vel.shape[1]
@@ -95,16 +95,18 @@ class GPSData(object):
         '''
         # check the file is exit
         if not os.path.isfile(filename):
-            logging.critical('{} does not exist! Please edit YAML file!'.format(filename))
-    
+            raise FileNotFoundError(
+                '{} does not exist! Please edit YAML file!'.format(filename))
+
         try:
             # load the data
             data = np.genfromtxt(filename, comments='#')
             if data.ndim == 1:
                 data = data.reshape((1, -1))
     
-            # load stations
-            if data.shape[1]>=7:
+            # load stations: the 8th column is optional.  A 7-column file
+            # (lon lat ve vn se sn corr) has no station-name column.
+            if data.shape[1] > 7:
                 station = np.genfromtxt(filename, usecols=7, comments='#', dtype=None, encoding='utf-8')
             else:
                 station = np.array([])
@@ -119,13 +121,7 @@ class GPSData(object):
             
             # make cov
             nsta     = len(data)
-        #   cov      = np.zeros((2*nsta, 2*nsta), dtype='float32')
             cov      = np.zeros(2*nsta)
-    
-        #   for i in range(nsta):
-        #       k = 2*i
-        #       cov[k,k]     = esig[i]**2
-        #       cov[k+1,k+1] = nsig[i]**2
             cov[0::2] = esig**2
             cov[1::2] = nsig**2
             return vel, llh, cov, station
@@ -152,12 +148,12 @@ class GPSData(object):
         '''    
         # check the file is exit
         if not os.path.isfile(filename):
-            logging.critical('{} does not exist! Please edit YAML file!'.format(filename))
-            sys.exit()
-    
+            raise FileNotFoundError(
+                '{} does not exist! Please edit YAML file!'.format(filename))
+
         try:
             # load the data
-            data = np.genfromtxt(filename, comments='#')  
+            data = np.genfromtxt(filename, comments='#')
             if data.ndim == 1: data = data.reshape((1, -1))
         
             # load stations  
@@ -188,8 +184,9 @@ class GPSData(object):
             return vel, llh, cov, station
         except Exception as e:
             logging.error(f'Error reading GMT 3D data: {str(e)}')
-            # print processing status
-           
+            raise ValueError(
+                f'Invalid GMT 3D data format in {filename}') from e
+
 
     @staticmethod
     def GetIOS3Ddata(filename, scale=1.0):
@@ -211,12 +208,12 @@ class GPSData(object):
     
         # check the file is exit
         if not os.path.isfile(filename):
-            logging.critical('{} does not exist! Please edit YAML file!'.format(filename))
-            sys.exit()
+            raise FileNotFoundError(
+                '{} does not exist! Please edit YAML file!'.format(filename))
 
         try:
             # load the data
-            data = np.genfromtxt(filename, usecols=[0,1,2,3,8,4,5,9], comments='#')  
+            data = np.genfromtxt(filename, usecols=[0,1,2,3,8,4,5,9], comments='#')
             if data.ndim == 1: data = data.reshape((1, -1))
         
             # load stations
@@ -225,8 +222,8 @@ class GPSData(object):
             # print read info
             nsta = len(data)
             if nsta < 2:
-                logging.fatal('Number of GNSS station < 2!')
-                sys.exit()
+                raise ValueError(
+                    'Number of GNSS stations < 2 in %s!' % filename)
 
             # extract data and rescale the data
             llh      = data[:,[1,0]]

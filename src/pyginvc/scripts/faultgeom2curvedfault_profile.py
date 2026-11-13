@@ -280,7 +280,7 @@ def main():
 
     # depth of the two edges of each input patch.
     # 'dep_in' is the depth of the edge whose coordinates are given; the other
-    # edge follows the same rule used by Geometry/Fault.py.
+    # edge follows the same rule used by Geometry/Patch.py.
     z_given = dep_in
     z_other = dep_in - w_in * np.sin(np.deg2rad(raw_dip))
     z_top_patch = np.minimum(z_given, z_other)

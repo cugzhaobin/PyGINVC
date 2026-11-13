@@ -5,6 +5,7 @@
 
 from pyginvc.Geometry.Patch import Fault
 import argparse
+import numpy as np
 import pandas as pd
 
 def main():
@@ -19,29 +20,11 @@ def main():
     fltfile = args.faultfile
     display = args.display
     origin  = args.origin
-    flt     = Fault(fltfile, 1, 1, False, origin=origin)
+    nfault = len(np.atleast_2d(np.genfromtxt(fltfile, comments='#')))
+    flt    = Fault(fltfile, nfault, 1, False, origin=origin)
     flt.load_fault()
     felem   = flt.FaultGeom2AllVertex()
     if display == 'complex':
-        """
-        fmt = 33*"%10.2f"
-        print(" Leng, wid, dip, strk, ss, ds, op, ts, rake,\
-                top_left_llh, top_right_llh,\
-                bottom_right_llh, bottom_left_llh,\
-                top_left_neu, top_right_neu,\
-                bottom_right_neu, bottom_left_neu")
-        for i in range(len(flt.length)):
-            print(fmt %(flt.length[i], flt.width[i], flt.dip[i], flt.strike[i],
-                    flt.ss[i], flt.ds[i], flt.op[i], flt.ts[i], flt.rake[i],
-                    flt.top_left_llh[i,0], flt.top_left_llh[i,1], flt.top_left_llh[i,2],
-                    flt.top_right_llh[i,0], flt.top_right_llh[i,1], flt.top_right_llh[i,2],
-                    flt.bot_right_llh[i,0], flt.bot_right_llh[i,1], flt.bot_right_llh[i,2],
-                    flt.bot_left_llh[i,0], flt.bot_left_llh[i,1], flt.bot_left_llh[i,2],
-                    flt.top_left_neu[i,0], flt.top_left_neu[i,1], flt.top_left_neu[i,2],
-                    flt.top_right_neu[i,0], flt.top_right_neu[i,1], flt.top_right_neu[i,2],
-                    flt.bot_right_neu[i,0], flt.bot_right_neu[i,1], flt.bot_right_neu[i,2],
-                    flt.bot_left_neu[i,0], flt.bot_left_neu[i,1], flt.bot_left_neu[i,2],
-                    ))"""
         with pd.option_context('display.max_rows', None, 'display.max_columns', None):
             print(felem)
     elif display == 'simple' or display == 'SIMPLE':
@@ -56,7 +39,7 @@ def main():
                     (flt.top_left_llh[i,2]+flt.top_right_llh[i,2])/2,
                     ))"""
         selected_df = felem[["length", "width", "strike", "dip", "rake", "strike_slip", "dip_slip", "tensile_slip", "total_slip",
-        "lt_lat", "lt_lon", "lt_dep", "rt_lat","rt_lon","rt_dep"]]
+        "lb_lat", "lb_lon", "lb_dep", "rb_lat","rb_lon","rb_dep"]]
         with pd.option_context('display.max_rows', None, 'display.max_columns', None):
             print(selected_df)
 

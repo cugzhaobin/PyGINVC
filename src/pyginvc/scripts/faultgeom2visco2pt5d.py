@@ -13,7 +13,7 @@ def main():
     args    = parser.parse_args()
 
     fltfile = args.faultfile
-    dat     = np.genfromtxt(fltfile)
+    dat     = np.atleast_2d(np.genfromtxt(fltfile))
     flt     = Fault(fltfile, len(dat), 1, False)
     flt.load_fault()
     flt.FaultGeom2VISCO2PT5D()

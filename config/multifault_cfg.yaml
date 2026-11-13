@@ -14,24 +14,31 @@ global:
     smoothfactor : [0.1, 0.5, 0.1]   # 平滑因子：起、止、步长（未逐断层覆盖时的默认值）
     lapmethod    : '1'               # 1=Laplacian 平滑, 4=Tikhonov 最小范数
     origin       : []                # [lat, lon] 覆盖自动参考原点；留空则自动按断层均值
-    greenfile    : 'SAVE'            # 'SAVE'=保存 greenfunc.h5；给 .h5/.npz 路径则复用
+    greenfile    : 'SAVE'            # 'SAVE'=逐断层保存 green_XX.h5；给路径则生成 {path}_XX.h5 供复用
+    # 注意：rake_beta 只能写在每个 faults[].green 段；global 段里的 rake_beta 会被忽略
 
 # ---------------------------------------------------------------------------
 # 2. 断层（每条断层一个条目）
 # ---------------------------------------------------------------------------
 faults:
     - name       : 'seg1'                          # 可选，仅用于日志/标注
-      file       : '/path/fault1.faultgeom'        # 单行断层；多行文件则 nsegs/ndeps 逐行广播
-      doSubFault : True                            # True=按 nsegs*ndeps 细分；False=每行即一个 patch
-      nsegs      : 20                              # 走向方向 patch 数（多行文件时可为列表）
-      ndeps      : 10                              # 倾向方向 patch 数（多行文件时可为列表）
+      file       : '/path/fault1.faultgeom'        # 单行断层；多行文件请拆成多条断层（doSubFault=True 仅支持单行）
+      doSubFault : True                            # True=按 nsegs*ndeps 细分（仅单行文件）；False=每行即一个 patch
+      nsegs      : 20                              # 走向方向 patch 数（单值；doSubFault=False 时需 nsegs*ndeps=行数）
+      ndeps      : 10                              # 倾向方向 patch 数（单值）
       bcs        : [0, 0, 0, 0]                    # 边界条件：top, bottom, end, start
       green:
-          method    : 'okada'                      # okada（均匀半空间）| wang（层状）
-          greentype : [1, 1, 0]                    # 反演的分量开关：[strike, dip, open]
-          nu        : 0.25                         # 泊松比
+          method    : 'okada'                      # okada（均匀半空间）| wang（EDCMP 层状模型）
+          greentype : [1, 1, 0]                    # 反演的分量开关：[strike, dip, open]；wang 不支持 open
+          nu        : 0.25                         # 泊松比（okada 使用）
           modulus   : 3.0e10                       # 剪切模量 (Pa)
           rake_beta : 0                            # 固定 rake 角(deg)，0=不约束
+          # --- 仅 wang（EDCMP）需要：先用 edgrn 生成层状格林函数 ---
+          # grndir    : './'                       # EDGRN 输出目录
+          # grn_ssfile: 'edgrnhs.ss'
+          # grn_dsfile: 'edgrnhs.ds'
+          # grn_clfile: 'edgrnhs.cl'
+          # edcmp_exe : 'edcmp'                    # EDCMP 可执行文件
       bound:
           ss_range  : [-100, 100]                  # 走滑分量范围 (mm)
           ds_range  : [0, 2000]                    # 倾滑分量范围 (mm)
@@ -47,7 +54,7 @@ faults:
       ndeps      : 15
       bcs        : [1, 0, 0, 0]
       green:
-          method    : 'wang'
+          method    : 'okada'                      # okada（均匀半空间）| wang（EDCMP 层状模型）
           greentype : [1, 0, 0]                    # 这条断层只反演走滑分量
           nu        : 0.25
           modulus   : 3.0e10
@@ -98,5 +105,6 @@ leveling:
 # ---------------------------------------------------------------------------
 export:
     outpath  : './new'
-    view     : True
-    vecscale : 5000
+    view     : True                  # True=反演结束后显示观测/模拟对比与滑动分布
+    vecscale : null                  # 矢量绘图比例；null=自适应（最长箭头约占图幅 10%），给数值则手动指定
+    depth_exaggeration : 2.0         # 三维滑动分布深度方向视觉放大倍数

@@ -5,6 +5,7 @@
 
 from pyginvc.Geometry.Patch import Fault
 import argparse
+import numpy as np
 
 def main():
     parser = argparse.ArgumentParser(description="Convert FaultGeom file to Coulomb input file.")
@@ -14,7 +15,8 @@ def main():
     args    = parser.parse_args()
     fltfile = args.faultfile
     shearmodulus = args.shear_modulus
-    flt     = Fault(fltfile, 1, 1, False)
+    nfault = len(np.atleast_2d(np.genfromtxt(fltfile, comments='#')))
+    flt    = Fault(fltfile, nfault, 1, False)
     flt.load_fault()
     slip    = flt.geom_grid[:,[7,8,9]]
     Mo, Mw  = flt.moment(slip, shear_modulus=shearmodulus)

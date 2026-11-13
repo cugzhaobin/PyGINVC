@@ -1,6 +1,5 @@
 import logging
 import numpy as np
-
 from pyginvc.Blocks.Blocks import Block
 
 logging.basicConfig(

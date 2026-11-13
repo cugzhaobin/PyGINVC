@@ -10,7 +10,7 @@ Created on July. 10, 2019.
 
 from scipy.linalg import block_diag
 import numpy as np
-from pyginvc.Geometry.Fault import Fault
+from pyginvc.Geometry.Patch import Fault
 from pyginvc.GeoData.GeoData import GeoData
 from pyginvc.Greens.Okada import Okada
 
@@ -43,7 +43,9 @@ class GeomOptimization:
         # Fault
         #
         faultfile       = dict_fault['faultfile']
-        flt             = Fault(faultfile, 1, 1, False, origin=[])
+        nfault          = len(np.atleast_2d(np.genfromtxt(faultfile, comments='#')))
+        flt             = Fault(faultfile, nfault, 1, False, origin=[])
+        flt.load_fault()
         fltboundfile    = dict_fault['faultbound']
         x               = flt.geom2x(flt.geom_grid, flt.origin)
         xlb, xub        = flt.GetFaultBounds(fltboundfile, 1)
@@ -281,7 +283,9 @@ class GeomOptimization:
         '''
         
         import os
-        flt = Fault(faultfile, 1, 1, False, origin=[])
+        nfault = len(np.atleast_2d(np.genfromtxt(faultfile, comments='#')))
+        flt = Fault(faultfile, nfault, 1, False, origin=[])
+        flt.load_fault()
         if os.path.isfile(tracefile):
             trace = np.load(tracefile)
             leng  = np.quantile(trace[:,0], [0.16, 0.5, 0.84])

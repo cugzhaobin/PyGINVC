@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import logging
 import numpy as np
 from scipy import optimize
@@ -9,6 +11,9 @@ logging.basicConfig(
                     datefmt="%d-%M-%Y %H:%M:%S")
 
 class BlockBackslipInversion(BaseInversion):
+    """
+    This class is designed to invert for Euler poles of rigid blocks along with backslip
+    """
     def __init__(self, data, fault, green, lap, dict_weight, dict_bound):
         super().__init__(data, dict_weight, dict_bound)
         self.fault       = fault

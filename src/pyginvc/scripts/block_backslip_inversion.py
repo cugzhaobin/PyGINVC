@@ -34,10 +34,10 @@ from pyginvc.Blocks.Blocks import BlockModel
 from pyginvc.GeoData.GeoData import GeoData
 from pyginvc.Geometry.Patch import Fault
 from pyginvc.Greens.Okada import Okada
-from pyginvc.Inversion.BlockBackslipInversion import BlockBackslipInversion
 from pyginvc.Inversion.Coupling import Coupling
-from pyginvc.Inversion.GenBlockBackslipInversion import GenBlockBackslipInversion
 from pyginvc.Laplacian.RectPlaneLap import RectPlaneLap
+from pyginvc.Inversion.BlockBackslipInversion import BlockBackslipInversion
+from pyginvc.Inversion.GenBlockBackslipInversion import GenBlockBackslipInversion
 
 REQUIRED_SECTIONS = ['dict_data', 'dict_block', 'dict_fault',
                      'dict_green', 'dict_weight', 'dict_bound']
@@ -408,7 +408,8 @@ def main():
     parser.add_argument('--smoothfactor', type=float, nargs=3,
                         metavar=('START', 'STOP', 'STEP'), default=None,
                         help='override dict_weight.smoothfactor; evaluated as '
-                             'np.arange(START, STOP, STEP), STOP excluded')
+                             'START, START+STEP, ..., STOP (STOP included when '
+                             'it lies on the grid)')
     parser.add_argument('--no-coupling', dest='no_coupling', action='store_true',
                         help='skip the locking-coefficient stage')
     args = parser.parse_args()

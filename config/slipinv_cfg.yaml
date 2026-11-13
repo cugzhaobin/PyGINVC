@@ -105,4 +105,4 @@ dict_bound:
 dict_export:
     view        : True
     outpath     : './new'
-    vecscale    : 5000
+    vecscale    : null    # 矢量绘图比例；null=自适应（最长箭头约占图幅 10%），给数值则手动指定

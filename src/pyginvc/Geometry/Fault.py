@@ -40,8 +40,8 @@ class Fault(object):
         # load the original fault geometry
         geom = self.LoadFaultGeom(faultfile)
         if len(geom) == 0:
-            logging.fatal('The input fault file {} is empty.'.format(faultfile))
-            exit()
+            raise ValueError(
+                'The input fault file %s is empty.' % faultfile)
         
         # convert the fault into DISMODEL format
         if len(origin) != 2:
@@ -120,15 +120,17 @@ class Fault(object):
         # init parameter
         geom = np.array([])
     
-        # check the file is exit
-        isfile = os.path.isfile(filename)
-        if ( isfile == False):
-           logging.fatal('fault file does not exist! Please input another file!')
-           sys.exit()
-    
+        # check the file exists
+        if not os.path.isfile(filename):
+            raise FileNotFoundError(
+                'Fault geometry file does not exist: %s' % filename)
+
         # load the data
         geom = np.genfromtxt(filename, comments='#')
-        if geom.ndim == 1: geom = geom.reshape((1, len(geom)))
+        if geom.size == 0:
+            raise ValueError('Fault geometry file is empty: %s' % filename)
+        if geom.ndim == 1:
+            geom = geom.reshape((1, len(geom)))
         logging.info('Fault Geometry is loaded.')
         return geom
 
@@ -297,7 +299,12 @@ class Fault(object):
             disgeom = numpy array, shape(m,10). Leng, wid, dep, dip, strk, dE, dN, ss, ds, op
     
         Output:
-            flt_elem_all = numpy array, shape(m,33). Leng, wid, dip, strk, ss, ds, op, ts, rake, top_left_llh, top_right_llh, bottom_right_llh, bottom_left_llh, top_left_neu, top_right_neu, bottom_right_neu, bottom_left_neu
+            flt_elem_all = numpy array, shape(m,33).  Leng, wid, dip, strk,
+            ss, ds, op, ts, rake, then four corners as llh and as neu:
+            lower-left, lower-right, upper-right, upper-left.  The FaultGeom
+            input line (SLat/SLon -> ELat/ELon) is the DOWN-DIP edge, so the
+            corners built from it are the lower ones; the upper corners are
+            one fault width up-dip.
         '''
     
         N            = 6378206.4

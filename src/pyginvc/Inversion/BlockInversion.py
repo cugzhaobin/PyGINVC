@@ -1,6 +1,6 @@
+#!/usr/bin/env python
 import logging
 import numpy as np
-from scipy import optimize
 from pyginvc.Inversion.BaseInversion import BaseInversion
 
 logging.basicConfig(
@@ -9,6 +9,9 @@ logging.basicConfig(
     datefmt="%d-%M-%Y %H:%M:%S")
 
 class BlockInversion(BaseInversion):
+    """
+    This class is designed to invert for Euler poles of rigid blocks
+    """
     def __init__(self, data, dict_weight={}, dict_bound={}):
         super().__init__(data, dict_weight, dict_bound)
             
@@ -32,14 +35,8 @@ class BlockInversion(BaseInversion):
 
         # init parameters
         r              = np.zeros(len_gps)
-        misfit         = 0.0
-        euler          = np.zeros(3*nblock)
-
-        nparam         = nblock*3
-        bu             = np.full(nparam, np.inf)
-        bl             = np.full(nparam,-np.inf)
-        
-        W, WSAR        = self.get_weight()
+        misfit         = 0.0       
+        W, _           = self.get_weight()
 
         G2I, G2R = self.assemble_design_matrix(nblock, G_gps_block)
         x, *_    = np.linalg.lstsq(G2I, d2I, rcond=None)

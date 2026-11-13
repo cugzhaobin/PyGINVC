@@ -443,13 +443,14 @@ def vertex_element_from_faultgeom(faultfile, origin):
         elem      :
     '''
     from pyginvc.Geometry.Patch import Fault
-    flt               = Fault(faultfile, 1, 1, False, origin=origin)
+    nfault            = len(np.atleast_2d(np.genfromtxt(faultfile, comments='#')))
+    flt               = Fault(faultfile, nfault, 1, False, origin=origin)
     flt.load_fault()
-    felem             = flt.felem
+    felem             = flt.FaultGeom2AllVertex().values
     vertex            = np.zeros((4*len(felem), 3))
     elements          = []
     patch             = []
-    disp_element      = felem[:,[5,4,6]] # ds, ss, opa # unit is mm
+    disp_element      = felem[:,[6,5,7]] # ds, ss, opa # unit is mm
 
     for i in range(len(felem)):
         vertex[4*i,:]   = felem[i,21:24]

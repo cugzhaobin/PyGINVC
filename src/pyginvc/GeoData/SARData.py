@@ -65,10 +65,12 @@ class SARData(object):
         # Read SAR Data
         #
         filename = self.sarfile
-        if not os.path.exists(filename):
-            if filename:
-                logging.warning(f'SAR file {filename} does not exit.')
+        if not filename:
+            # Empty sarfile is a placeholder for "this track has no data".
             return
+        if not os.path.exists(filename):
+            raise FileNotFoundError(
+                'SAR file %s does not exist.' % filename)
         [llh_sar, d_sar, unit] = self.GetSARdata(filename)
         self.llh_sar  = llh_sar
         self.d_sar    = d_sar.flatten()*scale
@@ -91,7 +93,11 @@ class SARData(object):
         sigma  = self.sigma
         lamda  = self.lamda
         nlos   = len(self.llh_sar)
-        if sigma is None or lamda is None:
+        if nlos == 0:
+            # No InSAR points: average distance / projection below are
+            # meaningless (nan) and would raise inside pyproj.
+            self.cov_sar = np.empty(0)
+        elif sigma is None or lamda is None:
             self.cov_sar = np.ones(nlos)
         else:
             origin  = np.mean(self.llh_sar, axis=0)

@@ -5,10 +5,9 @@ Created on Thu Jan 18 19:49:21 2024
 
 @author: zhao
 """
-
+import argparse
 import numpy as np
 from pyginvc.libs import geotools as gt
-import argparse
 
 def gen_fautgeom(origin, leng, width, dep, strike, dip, ss, ds, op):
     '''
