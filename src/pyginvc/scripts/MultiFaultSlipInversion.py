@@ -63,6 +63,20 @@ def _has_file(entry):
     return bool(str(entry.get('file') or '').strip())
 
 
+def _is_enabled(entry):
+    """Return True when a config entry should be used in the inversion.
+
+    A data/fault entry can be switched off without touching its ``file``
+    path by setting ``enable: false``.  Absent ``enable`` keeps the legacy
+    behaviour: an entry is used iff it names a real file (``_has_file``).
+    """
+    if not isinstance(entry, dict):
+        return False
+    if entry.get('enable') is False:
+        return False
+    return _has_file(entry)
+
+
 def resolve_gfiletype(global_cfg, gps_cfg):
     """Resolve the default GPS file type used by GPSData.
 
@@ -74,7 +88,7 @@ def resolve_gfiletype(global_cfg, gps_cfg):
     if gt:
         return gt
     for g in gps_cfg or []:
-        if _has_file(g) and g.get('type'):
+        if _is_enabled(g) and g.get('type'):
             gt = str(g['type']).strip()
             if gt:
                 return gt
@@ -91,7 +105,7 @@ def build_origin(fault_cfg):
     """
     geoms = []
     for f in fault_cfg:
-        if not _has_file(f):
+        if not _is_enabled(f):
             continue
         geom = np.genfromtxt(f['file'], comments='#')
         if geom.size == 0:
@@ -125,7 +139,7 @@ def build_faults(fault_cfg, origin):
     """
     flts, configs = [], []
     for i, f in enumerate(fault_cfg):
-        if not _has_file(f):
+        if not _is_enabled(f):
             continue
         missing = [k for k in ('nsegs', 'ndeps', 'doSubFault')
                    if k not in f]
@@ -154,7 +168,7 @@ def build_data(gps_cfg, sar_cfg, lev_cfg, gfiletype):
     files, configs = [], []
 
     for g in gps_cfg:
-        if not _has_file(g):
+        if not _is_enabled(g):
             continue
         obj = GPSData(g['file'], g.get('type') or gfiletype)
         obj.load()
@@ -162,7 +176,7 @@ def build_data(gps_cfg, sar_cfg, lev_cfg, gfiletype):
         configs.append(g)
 
     for s in sar_cfg:
-        if not _has_file(s):
+        if not _is_enabled(s):
             continue
         obj = SARData(s['file'],
                       scale=s.get('scale', 1.0),
@@ -173,7 +187,7 @@ def build_data(gps_cfg, sar_cfg, lev_cfg, gfiletype):
         configs.append(s)
 
     for l in lev_cfg:
-        if not _has_file(l):
+        if not _is_enabled(l):
             continue
         obj = LEVData(l['file'])
         obj.load()
@@ -265,7 +279,7 @@ def run(cfgfile):
     outpath = EXPC.get('outpath', './')
     output  = MultiOutput(data, faults, sol=inversion,
                           archdir=EXPC.get('archdir', outpath),
-                          outdir=outpath)
+                          outdir=outpath, cfgfile=cfgfile)
     results = inversion.run(output=output)
 
     # 4) 汇总
@@ -281,7 +295,9 @@ def run(cfgfile):
         View.plot_sar_ramp(h5file)
         View.plot_obs_mod(h5file, scale=EXPC.get('vecscale'))
         View.plot_slip_3d(h5file,
-                          depth_exaggeration=EXPC.get('depth_exaggeration', 2.0))
+                          depth_exaggeration=EXPC.get('depth_exaggeration', 2.0),
+                          outfile=os.path.join(outpath, 'slip_3d'))
+        output.WriteReport(embed=EXPC.get('report_embed', False))
 
 
 def main():

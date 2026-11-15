@@ -58,12 +58,14 @@ class MultiOutput(Output):
         archive_outfile()     按默认 patterns 归档
     '''
 
-    def __init__(self, data, faults, sol=None, archdir=None, outdir='.'):
+    def __init__(self, data, faults, sol=None, archdir=None, outdir='.',
+                 cfgfile=None):
         self.data    = data
         self.faults  = faults
         self.sol     = sol
         self.archdir = archdir
         self.outdir  = outdir or '.'
+        self.cfgfile = cfgfile
 
         # 基类钩子不读取这些属性，保留是为了兼容外部代码
         self.flt     = None

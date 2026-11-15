@@ -61,6 +61,7 @@ src/pyginvc/Inversion/BlockInversion.py
 src/pyginvc/Inversion/Coupling.py
 src/pyginvc/Inversion/GenBlockBackslipInversion.py
 src/pyginvc/Inversion/GeoInversion.py
+src/pyginvc/Inversion/MCMCSlipInversion.py
 src/pyginvc/Inversion/MultiFaultInversion.py
 src/pyginvc/Inversion/PatchSlipInversion.py
 src/pyginvc/Inversion/TriInversion.py
@@ -101,6 +102,7 @@ src/pyginvc/scripts/CheckerBoardRunOld.py
 src/pyginvc/scripts/ForwardRun.py
 src/pyginvc/scripts/GeomOptRun.py
 src/pyginvc/scripts/InversionView.py
+src/pyginvc/scripts/MultiFaultMCMCInversion.py
 src/pyginvc/scripts/MultiFaultSlipInversion.py
 src/pyginvc/scripts/MultiFaultSlipRun.py
 src/pyginvc/scripts/SlipInversion.py
@@ -137,6 +139,7 @@ src/pyginvc/scripts/profile_plot.py
 src/pyginvc/scripts/profile_prepare.py
 src/pyginvc/scripts/sdm2faultgeom.py
 src/pyginvc/scripts/slip_rolation.py
+src/pyginvc/scripts/trace2faultgeom.py
 src/pyginvc/scripts/trelis2faultgeom.py
 src/pyginvc/scripts/trelis2poly3d.py
 src/pyginvc/scripts/trelis2trimesh.py

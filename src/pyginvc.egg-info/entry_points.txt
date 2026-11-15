@@ -39,6 +39,7 @@ profile_prepare.py = pyginvc.scripts.profile_prepare:main
 pyginvc-gui = pyginvc.gui.app:main
 sdm2faultgeom.py = pyginvc.scripts.sdm2faultgeom:main
 slip_rolation.py = pyginvc.scripts.slip_rolation:main
+trace2faultgeom.py = pyginvc.scripts.trace2faultgeom:main
 trigeom2vtk.py = pyginvc.scripts.trigeom2vtk:main
 trimesh2gmtlin.py = pyginvc.scripts.trimesh2gmtlin:main
 trimesh2info.py = pyginvc.scripts.trimesh2info:main

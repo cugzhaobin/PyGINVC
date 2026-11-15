@@ -11,6 +11,7 @@ from scipy import linalg
 from scipy import sparse as sp
 from scipy.sparse import linalg as splinalg
 from pyginvc.Export.MultiOutput import MultiOutput
+from pyginvc.Export.Output import SolutionView
 
 try:  # emcee / corner 
     import emcee
@@ -876,9 +877,9 @@ class MCMCSlipInversion(object):
         return written
 
     def _solution_view(self, result):
-        sol = _SolutionView()
+        sol = SolutionView(
+            slip=np.asarray(result['slip_mean']).reshape(-1))
         sol.origin = self.inv.origin
-        sol.slip = np.asarray(result['slip_mean']).reshape(-1)
         sol.r = np.asarray(result['r']).reshape(-1)
         sol.misfit = np.asarray([result['misfit']])
         sol.dhat = np.asarray(result['dhat']).reshape(-1)

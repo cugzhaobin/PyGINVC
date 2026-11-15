@@ -82,7 +82,9 @@ def run(cfgfile, nsteps=None, burnin=None):
         View.plot_obs_mod(h5file, scale=EXPC.get('vecscale'))
         View.plot_slip_3d(
             h5file,
-            depth_exaggeration=EXPC.get('depth_exaggeration', 2.0))
+            depth_exaggeration=EXPC.get('depth_exaggeration', 2.0),
+            outfile=os.path.join(mc.outdir, 'slip_3d'))
+        View.make_html_report(mc.outdir)
 
     return mc, result
 

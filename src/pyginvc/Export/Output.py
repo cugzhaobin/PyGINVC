@@ -73,7 +73,8 @@ class Output(object):
     (MultiOutput) only differ in the hook implementations.
     '''
 
-    def __init__(self, flt, data, green, sol=None, archdir=None, outdir='.'):
+    def __init__(self, flt, data, green, sol=None, archdir=None, outdir='.',
+                 cfgfile=None):
         '''
         Constructor.
 
@@ -98,6 +99,7 @@ class Output(object):
         self.sol      = sol
         self.archdir  = archdir
         self.outdir   = outdir or '.'
+        self.cfgfile  = cfgfile
 
         self.flttype = 'rectangle'
         if isinstance(flt, Triangle):
@@ -713,6 +715,100 @@ class Output(object):
     # ------------------------------------------------------------------ #
     # Main entry point / archiving
     # ------------------------------------------------------------------ #
+    def WriteReport(self, filename='report.html', embed=False, cfgfile=None,
+                    title='PyGINVC report'):
+        '''
+        Write an HTML summary report (metrics, tables, figures, downloads).
+
+        Input:
+            filename = output HTML file name (inside outdir)
+            embed    = inline images as base64 for a single portable file
+            cfgfile  = optional YAML config file shown in an appendix
+            title    = page title
+        Output:
+            path of the written HTML file, or None when it could not be built
+        '''
+        from datetime import datetime
+        from pyginvc.Export.Report import HtmlReport
+
+        try:
+            cfgfile = cfgfile or self.cfgfile
+            # write the report next to the archived results when available
+            report_dir = os.path.abspath(self.archdir or self.outdir)
+            os.makedirs(report_dir, exist_ok=True)
+            sv      = self._solution_view()
+            blocks  = self._obs_blocks()
+            groups  = self._fault_groups()
+
+            n_gps = sum(len(b.llh) for b in blocks if b.kind == 'gps')
+            n_lev = sum(len(b.llh) for b in blocks if b.kind == 'lev')
+            n_sar = sum(len(b.llh) for b in blocks if b.kind == 'sar')
+            n_patch = sum(int(getattr(g.flt, 'nf', 0)) for g in groups)
+
+            rep = HtmlReport(report_dir, title=title, embed=embed)
+            rep.set_subtitle('Run finished %s'
+                             % datetime.now().strftime('%Y-%m-%d %H:%M'))
+            rep.add_meta('Fault type', self._flttype())
+            rep.add_meta('Faults', len(groups))
+            rep.add_metric('GPS stations', n_gps)
+            rep.add_metric('InSAR points', n_sar)
+            rep.add_metric('Leveling points', n_lev)
+            rep.add_metric('Fault patches', n_patch)
+
+            if sv is not None:
+                smo    = self._as_array(sv.smo_facts)
+                mgps   = self._as_array(sv.misfit_gps)
+                msar   = self._as_array(sv.misfit_sar)
+                ruff   = self._as_array(sv.ruff)
+                moment = self._as_array(sv.moment)
+
+                if smo.size:
+                    headers = ['Smoothing factor']
+                    if n_gps:      headers.append('WRSS GPS')
+                    if n_sar:      headers.append('WRSS InSAR')
+                    if ruff.size:  headers.append('Roughness')
+                    if moment.size:
+                        headers += ['Mo (N m)', 'Mw']
+
+                    rows = []
+                    for i in range(len(smo)):
+                        row = [float(smo[i])]
+                        if n_gps:     row.append(float(mgps[i]) if mgps.size else '')
+                        if n_sar:     row.append(float(msar[i]) if msar.size else '')
+                        if ruff.size: row.append(float(ruff[i]))
+                        if moment.size:
+                            row += [float(moment[i, 0]), float(moment[i, 1])]
+                        rows.append(row)
+                    rep.add_table('Inversion summary', headers, rows,
+                                  note='One row per tested smoothing factor.')
+
+                acc = getattr(self.sol, 'acceptance', None)
+                if acc is not None:
+                    rep.add_metric('MCMC acceptance', float(acc))
+                tau = getattr(self.sol, 'autocorr_time', None)
+                if tau is not None and np.size(tau):
+                    rep.add_metric('Autocorr time (median)',
+                                   float(np.nanmedian(np.asarray(tau, float))))
+
+            rep.add_figures_from_dir()
+            rep.add_downloads_from_dir()
+            # figures/results may live in outdir or in archdir; scan both
+            if os.path.abspath(self.outdir) != rep.outdir:
+                rep.add_figures_from_dir(directory=self.outdir)
+                rep.add_downloads_from_dir(directory=self.outdir)
+            if self.archdir and os.path.abspath(self.archdir) != rep.outdir:
+                arch = os.path.abspath(self.archdir)
+                if os.path.isdir(arch):
+                    rep.add_figures_from_dir(directory=arch)
+                    rep.add_downloads_from_dir(directory=arch)
+            if cfgfile and os.path.isfile(cfgfile):
+                with open(cfgfile, 'r', encoding='utf-8') as fid:
+                    rep.add_config(fid.read())
+            return rep.write(filename)
+        except Exception as exc:      # never fail an inversion over the report
+            logging.warning('HTML report could not be written: %s', exc)
+            return None
+
     def OutputSolution(self):
         '''Write HDF5, summary, models, GMT slip, data fit and archive.'''
         os.makedirs(self.outdir, exist_ok=True)
@@ -729,6 +825,7 @@ class Output(object):
         self.WriteLCurve()
         self.WriteData()
         self.archive_outfile()
+        self.WriteReport(cfgfile=self.cfgfile)
 
     def archive_outfile(self):
         '''Move output files into the archive directory (self.archdir).'''

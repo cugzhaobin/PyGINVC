@@ -113,7 +113,8 @@ class SlipInversion:
         # Output
         #
         outpath    = dict_export['outpath']
-        out        = Output(flt, data, green, sol=sol, archdir=outpath)
+        out        = Output(flt, data, green, sol=sol, archdir=outpath,
+                            cfgfile=args.cfgfile)
         out.OutputSolution()
         out.archive_outfile()
         

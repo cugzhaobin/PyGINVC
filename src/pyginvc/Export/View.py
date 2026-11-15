@@ -1,22 +1,29 @@
 #!/usr/bin/env python
 # Written by Zhao Bin, when he is at UC Berkeley. Mar 4 2016
 
-import h5py, os, logging
+import h5py, os, logging, glob
 import numpy as np
 import matplotlib.pyplot as plt
 
 from pyginvc.libs import geotools as gt
 from pyginvc.Geometry.Patch import Fault
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from matplotlib.collections import PolyCollection
+from matplotlib.colors import TwoSlopeNorm
 
-def _data_extent(lon, lat, margin=0.2):
+def _data_extent(lon, lat, margin=0.05):
     '''
     Return [lon_min, lon_max, lat_min, lat_max] with a margin for map extent.
+
+    The margin is proportional to the data span so that a small InSAR
+    footprint is not swamped by a fixed absolute margin.
     '''
-    lon = np.asarray(lon)
-    lat = np.asarray(lat)
-    return [lon.min()-margin, lon.max()+margin,
-            lat.min()-margin, lat.max()+margin]
+    lon = np.asarray(lon, dtype=float)
+    lat = np.asarray(lat, dtype=float)
+    dlon = max(np.ptp(lon) * margin, 1e-3)
+    dlat = max(np.ptp(lat) * margin, 1e-3)
+    return [lon.min()-dlon, lon.max()+dlon,
+            lat.min()-dlat, lat.max()+dlat]
 
 def _auto_quiver_scale(lon, lat, *uv, fraction=0.1, margin=0.2):
     '''
@@ -53,11 +60,42 @@ def _auto_quiver_scale(lon, lat, *uv, fraction=0.1, margin=0.2):
         return None
     return maxmag / (fraction * span)
 
-def _map_axes(fig, position, extent, ccrs, cfeature):
+def _div_norm(values):
+    '''TwoSlopeNorm centred on zero, built from a single data array.
+
+    Zero always maps to the centre of the diverging colormap (white), and
+    the positive/negative sides use the actual asymmetric data range so the
+    colour limits are never clipped.  Every panel gets its own norm, so
+    observation, prediction and residual each have an independent colorbar.
     '''
-    Add a PlateCarree GeoAxes with coastlines, borders and labelled gridlines.
+    v = np.asarray(values, dtype=float).ravel()
+    v = v[np.isfinite(v)]
+    if v.size == 0:
+        return TwoSlopeNorm(vmin=-1.0, vcenter=0.0, vmax=1.0)
+    vmin, vmax = float(v.min()), float(v.max())
+    if vmax <= vmin:
+        vmin, vmax = vmin - 1.0, vmax + 1.0
+    floor = max(1e-6, 1e-6 * max(abs(vmin), abs(vmax)))
+    return TwoSlopeNorm(vmin=min(vmin, -floor), vcenter=0.0,
+                        vmax=max(vmax, floor))
+
+
+def _save_fig(fig, base):
+    '''Save a figure as both PDF and PNG; return the two paths.'''
+    pdf = base + '.pdf'
+    png = base + '.png'
+    fig.savefig(pdf, format='pdf', bbox_inches='tight')
+    fig.savefig(png, format='png', dpi=200, bbox_inches='tight')
+    return pdf, png
+
+
+def _setup_map(ax, extent, ccrs, cfeature, left_labels=True):
     '''
-    ax = fig.add_subplot(position, projection=ccrs.PlateCarree())
+    给已创建的 GeoAxes 设置 extent、海岸线、国界、网格线标签。
+
+    ``left_labels`` 控制左侧纬度标签，非最左子图关闭，避免与相邻子图重叠。
+    地图子图与 colorbar 的位置由调用方用 GridSpec 显式排布，保证严格对齐。
+    '''
     ax.set_extent(extent, crs=ccrs.PlateCarree())
     ax.add_feature(cfeature.COASTLINE, linewidth=0.5)
     ax.add_feature(cfeature.BORDERS, linewidth=0.3, linestyle=':')
@@ -65,7 +103,51 @@ def _map_axes(fig, position, extent, ccrs, cfeature):
                       alpha=0.4, linestyle='--')
     gl.top_labels   = False
     gl.right_labels = False
+    gl.left_labels  = left_labels
     return ax
+
+def _geo_layout(ext, ncols, vcbar=False, hcbar=False):
+    '''按经纬度等比例布局地图与色棒，返回 (figsize, map_rects, hcbar_rects, vcbar_rect)。
+
+    用绝对坐标 (fig.add_axes) 放置地图，地图严格保持 lon:lat 比例，色棒紧贴
+    地图，从而既对齐又不留白。rect 均为归一化 [left, bottom, width, height]。
+    '''
+    lon_span = ext[1] - ext[0]
+    lat_span = ext[3] - ext[2]
+    if lat_span <= 0:
+        lat_span = max(lon_span, 1e-6)
+
+    map_h = 5.0                          # 地图高度（英寸）
+    map_w = map_h * lon_span / lat_span  # 等比例宽度
+    wgap     = 0.35                      # 地图间横向间距
+    cbar_w   = 0.3                       # 竖色棒宽
+    cbar_gap = 0.4                       # 竖色棒与地图间距
+    hcbar_h   = 0.45                     # 横色棒高
+    hcbar_gap = 0.45                     # 横色棒与地图间距（给经度标签）
+    ml, mr, mt, mb = 0.9, 0.3, 0.5, 0.3  # 左/右/上/下边距
+
+    W = ml + ncols * map_w + (ncols - 1) * wgap + mr
+    if vcbar:
+        W += cbar_w + cbar_gap
+    H = mt + map_h + mb
+    if hcbar:
+        H += hcbar_h + hcbar_gap
+
+    map_bottom = mb + (hcbar_h + hcbar_gap if hcbar else 0.0)
+
+    map_rects, hcbar_rects = [], []
+    for i in range(ncols):
+        x0 = ml + i * (map_w + wgap)
+        map_rects.append([x0 / W, map_bottom / H, map_w / W, map_h / H])
+        if hcbar:
+            hcbar_rects.append([x0 / W, mb / H, map_w / W, hcbar_h / H])
+
+    vcbar_rect = None
+    if vcbar:
+        x0 = ml + ncols * map_w + (ncols - 1) * wgap + cbar_gap
+        vcbar_rect = [x0 / W, map_bottom / H, cbar_w / W, map_h / H]
+
+    return (W, H), map_rects, hcbar_rects, vcbar_rect
 
 def _sar_counts(h5):
     '''
@@ -83,6 +165,84 @@ def _sar_counts(h5):
         if len(stored) > 0 and stored.sum() == n_total:
             counts = stored
     return counts
+
+def _fault_felem(h5):
+    '''从 solution HDF5 构造带滑移的断层顶点表；非矩形或无断层时返回 None。'''
+    if 'flt' not in h5 or 'flttype' not in h5['flt']:
+        return None
+    flttype = h5['flt/flttype'][()]
+    if isinstance(flttype, bytes):
+        flttype = flttype.decode()
+    if flttype != 'rectangle':
+        return None
+    geom = h5['flt/geom'][()]
+    dis_geom = h5['flt/dis_geom'][()]
+    slip = h5['sol/slip'][()]
+    if slip.ndim > 1:
+        slip = slip[-1]
+    slip = slip[0:len(geom) * 3].reshape(len(geom), 3)
+
+    flt = Fault.__new__(Fault)
+    flt.nf = len(geom)
+    flt.geom_grid = np.asarray(geom)
+    flt.dis_geom_grid = np.array(dis_geom, dtype=float)
+    flt.dis_geom_grid[:, 7:10] = slip
+    flt.origin = np.array([np.mean(flt.geom_grid[:, [3, 5]]),
+                           np.mean(flt.geom_grid[:, [4, 6]])])
+    return flt.FaultGeom2AllVertex()
+
+
+def _fault_extent(felem):
+    '''断层四个角点的 [lon_min, lon_max, lat_min, lat_max]。'''
+    lon = np.concatenate([np.asarray(felem[c], float) for c in
+                          ('lt_lon', 'rt_lon', 'rb_lon', 'lb_lon')])
+    lat = np.concatenate([np.asarray(felem[c], float) for c in
+                          ('lt_lat', 'rt_lat', 'rb_lat', 'lb_lat')])
+    return [lon.min(), lon.max(), lat.min(), lat.max()]
+
+
+def _union_extent(a, b):
+    '''合并两个 [lon_min, lon_max, lat_min, lat_max] 范围。'''
+    return [min(a[0], b[0]), max(a[1], b[1]),
+            min(a[2], b[2]), max(a[3], b[3])]
+
+
+def _fault_verts(felem):
+    '''把 felem 的每个 patch 四个角点整理成 [(lon, lat), ...] 列表。'''
+    verts = []
+    for _, r in felem.iterrows():
+        verts.append([(r['lt_lon'], r['lt_lat']),
+                      (r['rt_lon'], r['rt_lat']),
+                      (r['rb_lon'], r['rb_lat']),
+                      (r['lb_lon'], r['lb_lat'])])
+    return verts
+
+
+def _draw_fault_outline(ax, felem, trans):
+    '''只画断层 patch 的黑色轮廓线（观测/模拟子图用）。'''
+    if felem is None or len(felem) == 0:
+        return None
+    coll = PolyCollection(_fault_verts(felem), transform=trans,
+                          facecolors='none', edgecolors='black',
+                          linewidths=0.4)
+    ax.add_collection(coll)
+    return None
+
+
+def _draw_fault_slip(ax, felem, trans, cmap=None):
+    '''按 total_slip 填色画断层滑动分布，返回 mappable 供 colorbar 使用。'''
+    if felem is None or len(felem) == 0:
+        return None
+    ts = np.nan_to_num(np.asarray(felem['total_slip'], dtype=float))
+    if ts.max() <= 0:
+        return None
+    cmap = cmap or plt.cm.viridis
+    coll = PolyCollection(_fault_verts(felem), transform=trans, cmap=cmap,
+                          edgecolors='black', linewidths=0.3)
+    coll.set_array(ts)
+    coll.set_clim(0, ts.max())
+    ax.add_collection(coll)
+    return coll
 
 def plot_obs_mod(solutionfile, scale=None):
     '''
@@ -125,6 +285,11 @@ def plot_obs_mod(solutionfile, scale=None):
                 print('No dataset named llh_gps.')
                 return None
         llh_gps = h5['obs']['llh_gps'][()]
+        # 断层顶点 + 滑移，用于叠加轮廓/滑动分布；缺失或非矩形时为空
+        try:
+            felem = _fault_felem(h5)
+        except Exception:
+            felem = None
         origin  = h5['flt']['origin'][()]
         enu     = np.zeros((len(llh_gps),2)) 
         for i in range(len(llh_gps)):
@@ -140,15 +305,23 @@ def plot_obs_mod(solutionfile, scale=None):
             m_gps = m_gps.reshape(len(llh_gps), ndim)
             trans = ccrs.PlateCarree()
             ext   = _data_extent(llh_gps[:,1], llh_gps[:,0])
+            if felem is not None:
+                ext = _union_extent(ext, _fault_extent(felem))
             # 箭头长度自适应：观测/预测/残差共用同一比例，便于直接比较
             qscale = scale
             if qscale is None:
                 qscale = _auto_quiver_scale(
                     llh_gps[:,1], llh_gps[:,0],
                     (d_gps[:,0], d_gps[:,1]), (m_gps[:,0], m_gps[:,1]))
-            fig   = plt.figure(figsize=(12,5), layout='constrained')
-            ax1   = _map_axes(fig, 121, ext, ccrs, cfeature)
-            ax2   = _map_axes(fig, 122, ext, ccrs, cfeature)
+            (figsize, map_rects, _, vcbar_rect) = _geo_layout(ext, ncols=2, vcbar=True)
+            fig = plt.figure(figsize=figsize)
+            ax1 = fig.add_axes(map_rects[0], projection=ccrs.PlateCarree())
+            ax2 = fig.add_axes(map_rects[1], projection=ccrs.PlateCarree())
+            cax = fig.add_axes(vcbar_rect)
+            _setup_map(ax1, ext, ccrs, cfeature, left_labels=True)
+            _setup_map(ax2, ext, ccrs, cfeature, left_labels=False)
+            _draw_fault_outline(ax1, felem, trans)
+            slip_coll = _draw_fault_slip(ax2, felem, trans)
 
             ax1.quiver(llh_gps[:,1], llh_gps[:,0], d_gps[:,0], d_gps[:,1],
                        transform=trans, color='b', scale=qscale,
@@ -174,8 +347,12 @@ def plot_obs_mod(solutionfile, scale=None):
                             c=d_gps[:,2]-m_gps[:,2], cmap=plt.cm.jet,
                             linewidths=0.1, edgecolors='black')
             ax2.set_title('Residual')
+            if slip_coll is not None:
+                cb = fig.colorbar(slip_coll, cax=cax, orientation='vertical')
+                cb.set_label('Total slip (mm)')
 
-            fig.savefig('gps_mod_obs.pdf', format='pdf', bbox_inches='tight')
+            outdir = os.path.dirname(os.path.abspath(solutionfile))
+            _save_fig(fig, os.path.join(outdir, 'gps_mod_obs'))
             plt.show()
 
         # 
@@ -212,44 +389,65 @@ def plot_obs_mod(solutionfile, scale=None):
                     tag  = ' Track %d' % (itrack + 1) if multi else ''
                     trans = ccrs.PlateCarree()
                     ext   = _data_extent(lon, lat)
-                    # 观测和预测共用色标范围，便于直接比较
-                    vmin  = min(ob.min(), mb.min())
-                    vmax  = max(ob.max(), mb.max())
-                    # 残差用以 0 为中心的独立对称色标，避免被观测幅值掩盖
-                    rmax  = np.abs(rb).max()
-                    if rmax == 0:
-                        rmax = 1.0
-                    fig   = plt.figure(figsize=(18,5), layout='constrained')
-                    ax1   = _map_axes(fig, 131, ext, ccrs, cfeature)
-                    ax2   = _map_axes(fig, 132, ext, ccrs, cfeature)
-                    ax3   = _map_axes(fig, 133, ext, ccrs, cfeature)
+                    if felem is not None:
+                        ext = _union_extent(ext, _fault_extent(felem))
+                    # 观测、预测、残差各自使用独立的 diverging 色标：
+                    # 零值固定到白色，两侧范围按各自数据展开
+                    cmap  = plt.cm.RdBu_r
+                    norm1 = _div_norm(ob)
+                    norm2 = _div_norm(mb)
+                    norm3 = _div_norm(rb)
+                    (figsize, map_rects, hcbar_rects, vcbar_rect) = _geo_layout(
+                        ext, ncols=3, vcbar=True, hcbar=True)
+                    fig = plt.figure(figsize=figsize)
+                    ax1 = fig.add_axes(map_rects[0], projection=ccrs.PlateCarree())
+                    ax2 = fig.add_axes(map_rects[1], projection=ccrs.PlateCarree())
+                    ax3 = fig.add_axes(map_rects[2], projection=ccrs.PlateCarree())
+                    cax1 = fig.add_axes(hcbar_rects[0])
+                    cax2 = fig.add_axes(hcbar_rects[1])
+                    cax3 = fig.add_axes(hcbar_rects[2])
+                    cax_slip = fig.add_axes(vcbar_rect)
+                    _setup_map(ax1, ext, ccrs, cfeature, left_labels=True)
+                    _setup_map(ax2, ext, ccrs, cfeature, left_labels=False)
+                    _setup_map(ax3, ext, ccrs, cfeature, left_labels=False)
+                    _draw_fault_outline(ax1, felem, trans)
+                    _draw_fault_outline(ax2, felem, trans)
+                    slip_coll = _draw_fault_slip(ax3, felem, trans)
 
-                    s = ax1.scatter(lon, lat, c=ob,
-                                    cmap=plt.cm.jet, s=2, vmin=vmin, vmax=vmax,
-                                    transform=trans)
+                    s1 = ax1.scatter(lon, lat, c=ob,
+                                     cmap=cmap, norm=norm1, s=2,
+                                     transform=trans)
                     ax1.set_title('InSAR%s LOS Observation' % tag)
-                    cb = fig.colorbar(s, ax=ax1, shrink=0.8)
-                    cb.set_label('Line of sight changes (mm)')
 
-                    s = ax2.scatter(lon, lat, c=mb,
-                                    cmap=plt.cm.jet, s=2, vmin=vmin, vmax=vmax,
-                                    transform=trans)
+                    s2 = ax2.scatter(lon, lat, c=mb,
+                                     cmap=cmap, norm=norm2, s=2,
+                                     transform=trans)
                     ax2.set_title('InSAR%s LOS Prediction' % tag)
-                    cb = fig.colorbar(s, ax=ax2, shrink=0.8)
-                    cb.set_label('Line of sight changes (mm)')
 
-                    s = ax3.scatter(lon, lat, c=rb,
-                                    cmap=plt.cm.jet, s=2, vmin=-rmax, vmax=rmax,
-                                    transform=trans)
+                    s3 = ax3.scatter(lon, lat, c=rb,
+                                     cmap=cmap, norm=norm3, s=2,
+                                     transform=trans)
                     ax3.set_title('InSAR%s LOS Residual' % tag)
-                    cb = fig.colorbar(s, ax=ax3, shrink=0.8)
+
+                    # 观测/模拟各一个横向 colorbar，放在各自子图正下方
+                    cb = fig.colorbar(s1, cax=cax1, orientation='horizontal')
                     cb.set_label('Line of sight changes (mm)')
+                    cb = fig.colorbar(s2, cax=cax2, orientation='horizontal')
+                    cb.set_label('Line of sight changes (mm)')
+                    # 残差 LOS 横向 colorbar
+                    cb = fig.colorbar(s3, cax=cax3, orientation='horizontal')
+                    cb.set_label('Line of sight residual (mm)')
+                    # 同震滑动分布竖 colorbar，放在整张图最右侧
+                    if slip_coll is not None:
+                        cb2 = fig.colorbar(slip_coll, cax=cax_slip, orientation='vertical')
+                        cb2.set_label('Total slip (mm)')
 
                     if multi:
-                        fname = 'sar_mod_obs_%d.pdf' % (itrack + 1)
+                        fname = 'sar_mod_obs_%d' % (itrack + 1)
                     else:
-                        fname = 'sar_mod_obs.pdf'
-                    fig.savefig(fname, format='pdf', bbox_inches='tight')
+                        fname = 'sar_mod_obs'
+                    outdir = os.path.dirname(os.path.abspath(solutionfile))
+                    _save_fig(fig, os.path.join(outdir, fname))
                     plt.show()
                     start = end
 
@@ -330,19 +528,23 @@ def plot_sar_ramp(solutionfile, show=True):
             if vmax <= vmin:
                 vmin, vmax = vmin - 1.0, vmax + 1.0
 
-            fig = plt.figure(figsize=(18, 5), layout='constrained')
+            (figsize, map_rects, hcbar_rects, _) = _geo_layout(ext, ncols=3, hcbar=True)
+            fig = plt.figure(figsize=figsize)
             for k, (title, value) in enumerate(
                     (('Original', ob), ('Ramp', rp),
                      ('Ramp removed', cor)), start=1):
-                ax = _map_axes(fig, 130 + k, ext, ccrs, cfeature)
+                ax  = fig.add_axes(map_rects[k - 1], projection=ccrs.PlateCarree())
+                cax = fig.add_axes(hcbar_rects[k - 1])
+                _setup_map(ax, ext, ccrs, cfeature, left_labels=(k == 1))
                 s  = ax.scatter(lon, lat, c=value, cmap=plt.cm.jet, s=2,
                                 vmin=vmin, vmax=vmax, transform=trans)
                 ax.set_title('InSAR%s LOS %s' % (tag, title))
-                cb = fig.colorbar(s, ax=ax, shrink=0.8)
+                cb = fig.colorbar(s, cax=cax, orientation='horizontal')
                 cb.set_label('Line of sight changes (mm)')
 
-            fname = 'sar_ramp_%d.pdf' % (itrack + 1) if multi else 'sar_ramp.pdf'
-            fig.savefig(fname, format='pdf', bbox_inches='tight')
+            fname = 'sar_ramp_%d' % (itrack + 1) if multi else 'sar_ramp'
+            outdir = os.path.dirname(os.path.abspath(solutionfile))
+            _save_fig(fig, os.path.join(outdir, fname))
             if show:
                 plt.show()
             else:
@@ -488,7 +690,7 @@ def _slip_arrow_segments(felem, coordtype, slip_scale=0.6):
 
 def plot_slip_3d(solutionfile, elevation=40, azimuth=-81, coordtype='llh',
                  show=True, depth_exaggeration=2.0, show_slip=True,
-                 slip_scale=0.6):
+                 slip_scale=0.6, outfile=None):
     '''
     Plot 3D finite slip distribution.
 
@@ -512,6 +714,9 @@ def plot_slip_3d(solutionfile, elevation=40, azimuth=-81, coordtype='llh',
     slip_scale : float, optional
         Longest slip arrow as a fraction of the median patch length.
         The default is 0.6.
+    outfile : string, optional
+        Base path (without extension) for saving the figure as PDF and PNG.
+        None means the figure is only shown.
 
     Notes
     -----
@@ -615,6 +820,8 @@ def plot_slip_3d(solutionfile, elevation=40, azimuth=-81, coordtype='llh',
                     ax.set_xlabel('East (km)')
                     ax.set_ylabel('North (km)')
                 ax.set_zlabel('Depth (km)')
+                if outfile:
+                    _save_fig(fig, outfile)
                 plt.show()
             elif flttype == 'triangle':
                 element  = h5['flt/element'][()]-1
@@ -690,6 +897,8 @@ def plot_slip_3d(solutionfile, elevation=40, azimuth=-81, coordtype='llh',
                     plt.xlabel('East (m)')
                     plt.ylabel('North (m)')
                     ax.set_zlabel('Depth (m)')
+                if outfile:
+                    _save_fig(fig, outfile)
                 plt.show()
 
 
@@ -766,8 +975,39 @@ def plot_lcurve(solutionfile, curvefile=None, show=True):
     ax.grid(True, ls='--', lw=0.3, alpha=0.5)
 
     outpdf = os.path.join(os.path.dirname(os.path.abspath(curvefile)),
-                          'lcurve.pdf')
-    fig.savefig(outpdf, format='pdf', bbox_inches='tight')
+                          'lcurve')
+    _save_fig(fig, outpdf)
     if show:
         plt.show()
     return None
+
+
+def make_html_report(outdir, title='PyGINVC figures', images=None):
+    '''
+    Write ``report.html`` in ``outdir`` (thin wrapper over Export.Report).
+
+    Parameters
+    ----------
+    outdir : string
+        Directory holding the PNG files (same folder as the PDFs).
+    title : string, optional
+        Page title. The default is 'PyGINVC figures'.
+    images : list of string, optional
+        Explicit image paths. None means every figure produced by the
+        View functions in ``outdir`` (GPS/InSAR fits, ramps, 3D slip,
+        L-curve, MCMC traces), in a sensible order.
+
+    Returns
+    -------
+    string
+        Path of the written HTML file.
+    '''
+    from pyginvc.Export.Report import HtmlReport
+    rep = HtmlReport(outdir, title=title)
+    if images is None:
+        rep.add_figures_from_dir()
+    else:
+        for path in images:
+            rep.add_figure(path,
+                           os.path.splitext(os.path.basename(path))[0])
+    return rep.write()

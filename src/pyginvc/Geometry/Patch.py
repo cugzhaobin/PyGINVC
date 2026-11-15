@@ -1058,7 +1058,7 @@ class Fault(object):
                 u = row[['lb_u', 'rb_u', 'rt_u', 'lt_u']]
                 verts = [list(zip(e, n, u))]
 
-            subfault = Poly3DCollection(verts, facecolors=plt.cm.jet(slip[i]), linewidths=1, alpha=0.3)
+            subfault = Poly3DCollection(verts, facecolors=plt.cm.plasma(slip[i]), linewidths=1, alpha=0.3)
             subfault.set_linewidth(1)
             ax.add_collection3d(subfault)
 
@@ -1124,7 +1124,7 @@ class Fault(object):
                                   (row['rb_lon'], row['rb_lat']),
                                   (row['rt_lon'], row['rt_lat']),
                                   (row['lt_lon'], row['lt_lat'])])
-                map_colors.append(plt.cm.jet(slip[i]))
+                map_colors.append(plt.cm.plasma(slip[i]))
 
             if show_idx:
                 if coordtype == 'llh':
@@ -1224,7 +1224,7 @@ class Fault(object):
         # Shared slip colour bar for the map and 3D views
         tmax = felem['total_slip'].max() / 1000.
         sm   = plt.cm.ScalarMappable(norm=mcolors.Normalize(vmin=0, vmax=max(tmax, 1e-6)),
-                                     cmap=plt.cm.jet)
+                                     cmap=plt.cm.plasma)
         sm.set_array([])
         fig.colorbar(sm, ax=[ax_map, ax] if ax_map is not None else ax,
                      shrink=0.6, pad=0.12, label='Slip (m)')

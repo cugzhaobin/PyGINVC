@@ -108,3 +108,4 @@ export:
     view     : True                  # True=反演结束后显示观测/模拟对比与滑动分布
     vecscale : null                  # 矢量绘图比例；null=自适应（最长箭头约占图幅 10%），给数值则手动指定
     depth_exaggeration : 2.0         # 三维滑动分布深度方向视觉放大倍数
+    report_embed : True              # True=图片内联进 report.html，生成可单独分享的单文件

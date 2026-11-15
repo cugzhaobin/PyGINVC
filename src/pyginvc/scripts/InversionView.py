@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from pyginvc.Export import View
 import argparse
+import os
 
 def main():
     parser = argparse.ArgumentParser(description="Qick view inversion results.")
@@ -15,7 +16,10 @@ def main():
     View.plot_lcurve(solfile)
     View.plot_sar_ramp(solfile)
     View.plot_obs_mod(solfile, scale=vecscale)
-    View.plot_slip_3d(solfile)
+    View.plot_slip_3d(
+        solfile, outfile=os.path.join(os.path.dirname(os.path.abspath(solfile)),
+                                      'slip_3d'))
+    View.make_html_report(os.path.dirname(os.path.abspath(solfile)))
 
 
 if __name__ == '__main__':

@@ -57,6 +57,7 @@ dependencies = [
 "MultiFaultSlipInversion.py" = "pyginvc.scripts.MultiFaultSlipInversion:main"
 "plot_faultgeom.py" = "pyginvc.scripts.plot_faultgeom:main"
 "plot_recdislocation_surface.py" = "pyginvc.scripts.plot_recdislocation_surface:main"
+"plot_sar.py" = "pyginvc.scripts.plot_sar:cli"
 "plot_trimesh.py" = "pyginvc.scripts.plot_trimesh:main"
 "profile_batch.py" = "pyginvc.scripts.profile_batch:main"
 "profile_inversion.py" = "pyginvc.scripts.profile_inversion:main"
@@ -82,3 +83,6 @@ testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"pyginvc.Export" = ["templates/*.html"]
