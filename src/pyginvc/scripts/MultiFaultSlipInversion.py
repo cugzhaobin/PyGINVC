@@ -9,6 +9,8 @@ MultiFaultSlipInversion.py -- 多断层 + 多数据文件滑动反演的命令�
 
 用法：
     python MultiFaultSlipInversion.py --cfgfile config/slipinv_multi.yaml
+    python MultiFaultSlipInversion.py --cfgfile config/slipinv_multi.yaml \
+        --outpath ./run01          # 覆盖 YAML 中的 export.outpath
 
 限制：
     * 所有 GPS 文件必须是同一种格式（2D 或 3D），不混用；
@@ -219,7 +221,15 @@ def solution_file(output, outpath, filename='solutions.h5'):
 # --------------------------------------------------------------------------- #
 # Main program
 # --------------------------------------------------------------------------- #
-def run(cfgfile):
+def run(cfgfile, outpath=None):
+    """
+    Run the inversion.
+
+    outpath : str, optional
+        Output directory. When given, it overrides ``export.outpath`` from
+        the YAML config; ``export.archdir`` still falls back to it when the
+        config does not set one.
+    """
     with open(cfgfile, 'r') as fid:
         cfg = yaml.safe_load(fid) or {}
     if not isinstance(cfg, dict):
@@ -234,6 +244,13 @@ def run(cfgfile):
     SARC   = cfg.get('insar') or []
     LEVC   = cfg.get('leveling') or []
     EXPC   = cfg.get('export') or {}
+
+    # CLI --outpath 覆盖 YAML 的 export.outpath。反演层（MultiFaultInversion）
+    # 也从 export 里读取 outpath 来写 green_XX.h5 等文件，因此必须在这里
+    # 同步修改，而不是只在构造 MultiOutput 时替换。
+    if outpath is not None:
+        EXPC = dict(EXPC)
+        EXPC['outpath'] = outpath
 
     for name, value in (('faults', FAULTS), ('gps', GPSC),
                         ('insar', SARC), ('leveling', LEVC)):
@@ -276,7 +293,8 @@ def run(cfgfile):
 
     # 输出全部交给 MultiOutput：逐文件观测拟合、逐断层滑移模型、
     # HDF5/summary/L 曲线/GMT 滑移与归档
-    outpath = EXPC.get('outpath', './')
+    if outpath is None:
+        outpath = EXPC.get('outpath', './')
     output  = MultiOutput(data, faults, sol=inversion,
                           archdir=EXPC.get('archdir', outpath),
                           outdir=outpath, cfgfile=cfgfile)
@@ -303,8 +321,10 @@ def run(cfgfile):
 def main():
     parser = argparse.ArgumentParser(description='Multi-fault / multi-file slip inversion.')
     parser.add_argument('--cfgfile', type=str, required=True, help='path to YAML config')
+    parser.add_argument('--outpath', type=str, default=None,
+                        help='output directory; overrides export.outpath in the YAML config')
     args = parser.parse_args()
-    run(args.cfgfile)
+    run(args.cfgfile, outpath=args.outpath)
 
 
 if __name__ == '__main__':

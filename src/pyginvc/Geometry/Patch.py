@@ -834,7 +834,8 @@ class Fault(object):
     def plot_faultgeom(self, value=None, afsfile="", coordtype="llh", show_idx=False,
                        azimuth=-40, elevation=40, sarfile="", gpsfile="",
                        show_map=True, scale=1000, show_slip=False, slip_scale=0.6,
-                       slip_head=0.18, slip_head_angle=15.0, savefig=""):
+                       slip_head=0.18, slip_head_angle=15.0, savefig="",
+                       field="slip"):
         '''
         Plot the fault geometry with an optional cartopy map view.
 
@@ -842,6 +843,19 @@ class Fault(object):
         perspective view on the right. cartopy's GeoAxes is a 2-D projection
         and cannot be used as an mplot3d axis, so the two views are separate
         subplots. If cartopy is not installed, only the 3D view is drawn.
+
+        field : str, optional
+            Quantity used to colour the patches and label the colour bar.
+            One of 'slip'/'total_slip', 'strike_slip', 'dip_slip',
+            'tensile_slip', 'rake', 'strike', 'dip', 'length', 'width' or
+            'depth'. Values come from the per-patch strike, dip, ... columns
+            of ``FaultGeom2AllVertex``; strike and dip are reduced to the
+            usual ranges (strike mod 360, dip mod 180, because the FaultGeom
+            dip is 180 deg larger than the conventional one). Slip
+            components are converted from mm to m, depths are positive
+            downward. The default is 'slip'. Ignored when an explicit
+            ``value`` array is given (the field still sets the colour-bar
+            label and unit).
 
         show_slip : bool, optional
             Draw the slip vector of every patch: the tail of each arrow is at
@@ -870,15 +884,63 @@ class Fault(object):
         from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
         felem = self.FaultGeom2AllVertex()
-        ts    = np.asarray(felem['total_slip'], dtype=float)
-        tmax0 = ts.max() if ts.size else 0.0
-        slip  = ts / tmax0 if tmax0 > 0 else np.zeros_like(ts)
+
+        # Per-patch value used for the face colour.  Each entry is
+        #   (column in felem, colour-bar label, scale applied for the label,
+        #    lower bound of the colour scale or None to use the data minimum,
+        #    optional normaliser for the raw value)
+        # FaultGeom2AllVertex returns strike/dip in the FaultGeom convention;
+        # the normalisers apply the same reduction as FaultGeom2EDCMP,
+        # FaultGeom2PSCMP and FaultGeom2RELAX (strike mod 360, dip mod 180,
+        # since the FaultGeom dip is 180 deg larger than the usual one).
+        field_specs = {
+            'slip':         ('total_slip',  'Slip (m)',         1e-3, 0.0, None),
+            'total_slip':   ('total_slip',  'Slip (m)',         1e-3, 0.0, None),
+            'strike_slip':  ('strike_slip', 'Strike-slip (m)',  1e-3, None, None),
+            'dip_slip':     ('dip_slip',    'Dip-slip (m)',     1e-3, None, None),
+            'tensile_slip': ('tensile_slip', 'Tensile slip (m)', 1e-3, None, None),
+            'rake':         ('rake',        'Rake (deg)',       1.0,  None, None),
+            'strike':       ('strike',      'Strike (deg)',     1.0,  None,
+                             lambda v: np.mod(v, 360.0)),
+            'dip':          ('dip',         'Dip (deg)',        1.0,  None,
+                             lambda v: np.mod(v, 180.0)),
+            'length':       ('length',      'Length (km)',      1.0,  None, None),
+            'width':        ('width',       'Width (km)',       1.0,  None, None),
+            'depth':        (None,          'Depth (km)',       1.0,  None, None),
+        }
+        key = str(field).lower()
+        if key not in field_specs:
+            raise ValueError("field must be one of %s, got %r"
+                             % (sorted(field_specs), field))
+        fcol, flabel, fscale, fmin, fwrap = field_specs[key]
 
         if value is not None:
-            v    = np.abs(np.asarray(value, dtype=float))
-            vmax = v.max() if v.size else 0.0
-            slip = v / vmax if vmax > 0 else np.zeros_like(v)
-    
+            cvals = np.abs(np.asarray(value, dtype=float))
+        elif fcol is None:      # depth of the patch centre, positive down
+            cvals = -felem[['lb_dep', 'rb_dep', 'rt_dep', 'lt_dep']].values.mean(axis=1)
+        else:
+            cvals = np.asarray(felem[fcol], dtype=float)
+        cvals = np.nan_to_num(cvals).ravel()
+        if fwrap is not None:
+            cvals = fwrap(cvals)
+
+        # Normalise to [0, 1] for the face colours; slip keeps a zero lower
+        # bound so zero-slip patches stay on the first colour.
+        if cvals.size == 0:
+            cvals = np.zeros(len(felem))
+        vmin = 0.0 if fmin is not None else float(cvals.min())
+        vmax = float(cvals.max())
+        if vmax <= vmin:
+            # Degenerate range (e.g. a single patch): pad it so the colour
+            # bar keeps a readable scale.
+            if fmin is not None:
+                vmax = vmin + 1e-6
+            else:
+                pad  = max(abs(vmin) * 1e-3, 1e-3)
+                vmin -= pad
+                vmax += pad
+        slip = (cvals - vmin) / (vmax - vmin)
+
         if coordtype == 'llh':
             x = felem[['lb_lon', 'rb_lon', 'rt_lon', 'lt_lon']]
             y = felem[['lb_lat', 'rb_lat', 'rt_lat', 'lt_lat']]
@@ -1221,13 +1283,14 @@ class Fault(object):
         plt.xticks(fontsize=12)
         plt.yticks(fontsize=12)
 
-        # Shared slip colour bar for the map and 3D views
-        tmax = felem['total_slip'].max() / 1000.
-        sm   = plt.cm.ScalarMappable(norm=mcolors.Normalize(vmin=0, vmax=max(tmax, 1e-6)),
-                                     cmap=plt.cm.plasma)
+        # Shared colour bar for the map and 3D views, matching the field
+        # used for the face colours.
+        sm = plt.cm.ScalarMappable(
+            norm=mcolors.Normalize(vmin=vmin*fscale, vmax=vmax*fscale),
+            cmap=plt.cm.plasma)
         sm.set_array([])
         fig.colorbar(sm, ax=[ax_map, ax] if ax_map is not None else ax,
-                     shrink=0.6, pad=0.12, label='Slip (m)')
+                     shrink=0.6, pad=0.12, label=flabel)
         #   cb.set_label('Total slip (m)', fontsize=12)
         if savefig:
             fig.savefig(savefig, dpi=300, bbox_inches='tight')

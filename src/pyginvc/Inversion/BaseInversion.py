@@ -186,12 +186,12 @@ class BaseInversion:
         if len_geod > 0:
             r[:len_geod] = d2R[:len_geod] - W @ dhat[:len_geod]
             mis_gps = r[:len_geod].T @ r[:len_geod]
-            logging.info(f"GPS WRSS: {mis_gps:.2f}")
+            logging.info(f"GPS/N WRSS: {mis_gps/len_geod:.2f}")
 
         if len_sar > 0:
             r[len_geod:] = d2R[len_geod:] - WSAR @ dhat[len_geod:]
             mis_sar = r[len_geod:].T @ r[len_geod:]
-            logging.info(f"SAR WRSS: {mis_sar:.2f}")
+            logging.info(f"SAR/N WRSS: {mis_sar/len_sar:.2f}")
 
         misfit = mis_gps + mis_sar
         return r, dhat, mis_gps, mis_sar, misfit

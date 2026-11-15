@@ -35,6 +35,12 @@ def main():
     parser.add_argument('--gpsfile', type=str, required=False, default="", help='GPS file')
     parser.add_argument('--savefig', type=str, required=False, default="", help='Save the figure to this path (e.g. faultgeom.png)')
     parser.add_argument('--scale', type=float, required=False, default=1000, help='scale for vector')
+    parser.add_argument('--field', '--colorby', dest='field', type=str,
+                        default='slip', choices=['slip', 'total_slip',
+                        'strike_slip', 'dip_slip', 'tensile_slip', 'rake',
+                        'strike', 'dip', 'length', 'width', 'depth'],
+                        help='Quantity used to colour the patches '
+                             '(default: slip)')
     parser.add_argument('--nomap', action='store_true', help='Disable the cartopy map view')
     parser.add_argument('--showslip', action='store_true', help='Draw slip vectors on each patch')
     parser.add_argument('--slipscale', type=float, default=0.6, help='longest slip arrow as a fraction of the median patch size')
@@ -65,7 +71,7 @@ def main():
                        slip_head=args.sliphead,
                        slip_head_angle=args.slipheadangle,
                        azimuth=azim, elevation=elev,
-                       savefig=args.savefig)
+                       savefig=args.savefig, field=args.field)
 
 
 if __name__ == '__main__':
