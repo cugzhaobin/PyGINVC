@@ -27,6 +27,7 @@ dependencies = [
 ]
 
 [project.scripts]
+"pyginvc" = "pyginvc.scripts.cli:main"
 "SlipInversion.py" = "pyginvc.scripts.SlipInversion:main"
 "TriSlipInversion.py" = "pyginvc.scripts.TriSlipInversion:main"
 "block_backslip_inversion.py" = "pyginvc.scripts.block_backslip_inversion:main"

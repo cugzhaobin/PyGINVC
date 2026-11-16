@@ -1,5 +1,10 @@
-import geopandas as gpd
 import numpy as np
+
+try:                       # optional: only BlockModel needs it
+    import geopandas as gpd
+except ImportError:
+    gpd = None
+
 class Block:
     def __init__(self, block_id, geometry, name=None):
         self.id       = block_id
@@ -34,6 +39,10 @@ class Block:
 
 class BlockModel:
     def __init__(self, geojsonfile):
+        if gpd is None:
+            raise ImportError(
+                'BlockModel needs geopandas to read %s; '
+                'install it with "pip install geopandas".' % geojsonfile)
         gpf = gpd.read_file(geojsonfile)
         self.blocks = []
         for i, row in gpf.iterrows():

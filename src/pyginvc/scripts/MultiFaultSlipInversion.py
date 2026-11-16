@@ -49,6 +49,7 @@ __all__ = [
     'build_data',
     'resolve_gfiletype',
     'solution_file',
+    '_resolve_view',
     'run',
     'main',
 ]
@@ -218,6 +219,47 @@ def solution_file(output, outpath, filename='solutions.h5'):
     return os.path.join(outpath, filename)
 
 
+# Backends that never open a window: plt.show() there is a silent no-op (or a
+# warning), so asking for an interactive view would look like nothing happened.
+_NONINTERACTIVE_BK = ('agg', 'pdf', 'ps', 'svg', 'cairo', 'template',
+                      'pgf', 'inline')
+
+
+def _as_bool(value):
+    """Coerce a YAML scalar to bool, so 'False'/'no' in a config is not True."""
+    if isinstance(value, str):
+        return value.strip().lower() in ('1', 'true', 'yes', 'on')
+    return bool(value)
+
+
+def _resolve_view(export_cfg):
+    """Return True when figures should be shown interactively.
+
+    ``export.view`` is the canonical key (the YAML templates and
+    MultiFaultMCMCInversion use it); ``export.show`` is accepted as a legacy
+    alias.  The View functions always save PDF+PNG; this flag only decides
+    whether ``plt.show()`` is called afterwards, so ``view: false`` gives a
+    silent batch run and ``view: true`` pops up the windows.
+    """
+    export_cfg = export_cfg or {}
+    value = export_cfg.get('view')
+    if value is None:
+        value = export_cfg.get('show')
+    view = _as_bool(value) if value is not None else False
+    if view:
+        try:
+            import matplotlib
+            backend = str(matplotlib.get_backend()).lower()
+        except Exception:                      # matplotlib missing: let it fail later
+            return view
+        if any(backend.startswith(k) for k in _NONINTERACTIVE_BK):
+            logging.warning(
+                'export.view=True but the matplotlib backend is %r, which '
+                'cannot open a window; figures are saved only. Unset '
+                'MPLBACKEND=Agg (or use TkAgg/MacOSX) to see them.', backend)
+    return view
+
+
 # --------------------------------------------------------------------------- #
 # Main program
 # --------------------------------------------------------------------------- #
@@ -307,15 +349,29 @@ def run(cfgfile, outpath=None):
     print('Slip models written to %s/' % outpath)
 
     # 5) 可视化：观测值与模拟值对比、滑动分布、折衷（L）曲线
-    if EXPC.get('view', False):
-        h5file = solution_file(output, outpath)
-        View.plot_lcurve(h5file)
-        View.plot_sar_ramp(h5file)
-        View.plot_obs_mod(h5file, scale=EXPC.get('vecscale'))
-        View.plot_slip_3d(h5file,
-                          depth_exaggeration=EXPC.get('depth_exaggeration', 2.0),
-                          outfile=os.path.join(outpath, 'slip_3d'))
-        output.WriteReport(embed=EXPC.get('report_embed', False))
+    #    图总会生成并保存（PDF+PNG）；export.view 只控制是否调用 plt.show()
+    #    交互显示。键名以 export.view 为准，export.show 仅作兼容别名。
+    show = _resolve_view(EXPC)
+    h5file = solution_file(output, outpath)
+    View.plot_lcurve(h5file, show=show)
+    View.plot_sar_ramp(h5file, show=show)
+    View.plot_obs_mod(h5file, scale=EXPC.get('vecscale'), show=show)
+    View.plot_slip_3d(h5file,
+                      depth_exaggeration=EXPC.get('depth_exaggeration', 2.0),
+                      outfile=os.path.join(outpath, 'slip_3d'),
+                      show=show)
+    output.WriteReport(embed=EXPC.get('report_embed', False))
+
+    # 6) 交互式报告（plotly）：3D 可旋转、2D 热图、悬停读数
+    if EXPC.get('interactive_report', True):
+        try:
+            from pyginvc.Export.PlotlyReport import make_report
+            make_report(h5file,
+                        depth_exaggeration=EXPC.get('depth_exaggeration', 1.0),
+                        arrow_scale=EXPC.get('arrow_scale', 1.0),
+                        embed=EXPC.get('report_embed', False))
+        except Exception as exc:      # 报告失败不应中断反演
+            logging.warning('interactive report could not be written: %s', exc)
 
 
 def main():

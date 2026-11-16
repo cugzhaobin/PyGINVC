@@ -244,7 +244,7 @@ def _draw_fault_slip(ax, felem, trans, cmap=None):
     ax.add_collection(coll)
     return coll
 
-def plot_obs_mod(solutionfile, scale=None):
+def plot_obs_mod(solutionfile, scale=None, show=True):
     '''
     Plot observation and prediction for GPS and InSAR data
 
@@ -257,6 +257,9 @@ def plot_obs_mod(solutionfile, scale=None):
         arrows are scaled automatically so that the longest one spans about
         10% of the map side; observation, prediction and residual share the
         same scale for direct comparison.
+    show : bool, optional
+        Call ``plt.show()`` when True. The default is True. Pass False for
+        batch runs: figures are still saved, but nothing blocks.
 
     Returns
     -------
@@ -353,7 +356,10 @@ def plot_obs_mod(solutionfile, scale=None):
 
             outdir = os.path.dirname(os.path.abspath(solutionfile))
             _save_fig(fig, os.path.join(outdir, 'gps_mod_obs'))
-            plt.show()
+            if show:
+                plt.show()
+            else:
+                plt.close(fig)
 
         # 
         # For InSAR
@@ -448,7 +454,10 @@ def plot_obs_mod(solutionfile, scale=None):
                         fname = 'sar_mod_obs'
                     outdir = os.path.dirname(os.path.abspath(solutionfile))
                     _save_fig(fig, os.path.join(outdir, fname))
-                    plt.show()
+                    if show:
+                        plt.show()
+                    else:
+                        plt.close(fig)
                     start = end
 
 
@@ -716,7 +725,12 @@ def plot_slip_3d(solutionfile, elevation=40, azimuth=-81, coordtype='llh',
         The default is 0.6.
     outfile : string, optional
         Base path (without extension) for saving the figure as PDF and PNG.
-        None means the figure is only shown.
+        None means the figure is not saved (it is still shown when
+        ``show=True``).
+    show : bool, optional
+        Call ``plt.show()`` when True; otherwise the figure is saved (when
+        ``outfile`` is given) and closed immediately so that batch runs
+        never block. The default is True.
 
     Notes
     -----
@@ -822,7 +836,10 @@ def plot_slip_3d(solutionfile, elevation=40, azimuth=-81, coordtype='llh',
                 ax.set_zlabel('Depth (km)')
                 if outfile:
                     _save_fig(fig, outfile)
-                plt.show()
+                if show:
+                    plt.show()
+                else:
+                    plt.close(fig)
             elif flttype == 'triangle':
                 element  = h5['flt/element'][()]-1
                 slip     = h5['sol/slip'][()]
@@ -899,7 +916,10 @@ def plot_slip_3d(solutionfile, elevation=40, azimuth=-81, coordtype='llh',
                     ax.set_zlabel('Depth (m)')
                 if outfile:
                     _save_fig(fig, outfile)
-                plt.show()
+                if show:
+                    plt.show()
+                else:
+                    plt.close(fig)
 
 
 def plot_lcurve(solutionfile, curvefile=None, show=True):
@@ -979,6 +999,8 @@ def plot_lcurve(solutionfile, curvefile=None, show=True):
     _save_fig(fig, outpdf)
     if show:
         plt.show()
+    else:
+        plt.close(fig)
     return None
 
 

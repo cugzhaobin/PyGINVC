@@ -227,25 +227,27 @@ class Fault(object):
         return pm
         
     def disgeom2geom(self, dis_geom):
+        '''Convert fault geometry from xy (DISMODEL) into llh FaultGeom.
+
+        Input
+        -----
+        dis_geom : array, shape (nf, 10)
+            Columns: length, width, depth, dip, strike, dE, dN,
+            strike-slip, dip-slip, opening.
+
+        Output
+        ------
+        geom : array, shape (nf, 10)
+            Standard FaultGeom columns: width, depth, dip, SLat, SLon,
+            ELat, ELon, strike-slip, dip-slip, opening.  The full 10 columns
+            are returned (rather than only the first 7) so that a fault built
+            with ``doSubFault=True`` has exactly the same layout as one read
+            from a 10-column faultgeom file; otherwise ``FaultCollection``
+            cannot stack mixed faults in a single inversion.
+
         '''
-        Convert fault geometry from xy into llh, the output format is the same as FaultGeom
-        Input:
-            dis_geom    = numpy array, 1x10 vector defined as follows
-            dis_geom[0] = fault length along the strike direction (km)
-            dis_geom[1] = fault width in dip direction (km)
-            dis_geom[2] = depth of lower edge of fault (km)
-            dis_geom[3] = dip angle, from the horizontal (degrees) 
-            dis_geom[4] = strike, clockwise from N (degrees)
-            dis_geom[5] = East offset of midpoint of lower edge from origin (km)
-            dis_geom[6] = North offset of midpoint of lower edge from origin (km)        
-        Output:
-            geom        = numpy array, nf*7 vector defined as following
-                            Width  Depth  Dip  SLon SLat ELon Elat
-                            ( km    km    deg  deg  deg  deg  deg)
-            
-        '''
-        geom = zeros((self.nf,7))
-        
+        geom = zeros((self.nf,10))
+
         if self.nf > 0:
             for i in range(0, self.nf):
                 # convert middle of fault plane to upper corner (lat1, lon1)
@@ -266,6 +268,9 @@ class Fault(object):
                 geom[i,0] = dis_geom[i,1]
                 geom[i,1] = dis_geom[i,2]
                 geom[i,2] = dis_geom[i,3]
+                # 保留滑动三分量，使输出列数与 FaultGeom 文件一致
+                if dis_geom.shape[1] >= 10:
+                    geom[i,7:10] = dis_geom[i,7:10]
         return geom
         
     def FaultGeom2AllVertex(self):

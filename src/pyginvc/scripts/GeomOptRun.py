@@ -43,11 +43,14 @@ class GeomOptim:
         elif dict_param['method'] == 'diff':
             opt.run_geomest()
 
-if __name__ == '__main__':
-    if len(sys.argv) != 2:
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if len(argv) != 1:
         logging.warning('Please input configure file in YAML format')
-        sys.exit()
+        return 2
+    GeomOptim(argv[0]).run()
+    return 0
 
-    cfgfile = sys.argv[1]
-    geomopt = GeomOptim(cfgfile)
-    geomopt.run()
+
+if __name__ == '__main__':
+    sys.exit(main())

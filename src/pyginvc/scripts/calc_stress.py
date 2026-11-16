@@ -10,7 +10,6 @@ Mod by Zhao Bin, June 24, 2018. remove temple files
 """
 
 
-from pyginvc.pscmp import pstress
 from pyginvc.libs import geotools as gt
 from pyginvc.libs import edcmp 
 from pyginvc.libs import stress as strss
@@ -33,6 +32,16 @@ def faultgeom2origin(faultfile):
     return origin
 
 def main():
+    # pstress is a compiled extension; import it lazily so this entry point
+    # still loads (and can print a useful message) when it is not built.
+    try:
+        from pyginvc.pscmp import pstress
+    except Exception as exc:
+        sys.exit('calc_stress requires the compiled extension '
+                 'pyginvc.pscmp.pstress. Build it with\n'
+                 '  f2py -c cmbfix.f mscorr.f cmbopt.f roots3.f -m pstress\n'
+                 'Original error: %s' % exc)
+
     if len(sys.argv) != 3:
         print(' calc_stress.py <faultgeom> <calfile>')
         print(' calfile : lon lat dep(km) strike dip rake friction')

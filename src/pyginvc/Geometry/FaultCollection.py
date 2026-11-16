@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """Aggregate view over a collection of rectangular fault patches."""
 
+import logging
 import numpy as np
 
 
@@ -46,17 +47,30 @@ class FaultCollection(object):
     def stack(self, name):
         '''Vertically concatenate the named 2-D array of every sub-fault.
 
-        All sub-faults must have the same number of columns.  The usual cause
-        of a mismatch is mixing doSubFault=True faults (10-column geom_grid)
-        with doSubFault=False ones (7 columns) in the same inversion.
+        ``geom_grid`` has a historical layout difference: faults loaded from
+        a 10-column faultgeom file (doSubFault=False) contain the three slip
+        columns, while some doSubFault=True paths used to build only the
+        first 7 columns.  Those short arrays are padded with zero slip
+        columns so that mixed faults can still be stacked.  Any other
+        mismatch is still an error.
         '''
         arrays = [np.asarray(getattr(f, name)) for f in self.flts]
         ncols  = sorted({a.shape[1] for a in arrays if a.ndim == 2})
         if len(ncols) > 1:
-            raise ValueError(
-                "Cannot stack %r: sub-faults have different column counts "
-                "%s; check that doSubFault is consistent for all faults."
-                % (name, ncols))
+            if name == 'geom_grid' and set(ncols) <= {7, 10}:
+                width = max(ncols)
+                arrays = [
+                    np.column_stack((a, np.zeros((a.shape[0], width - a.shape[1]))))
+                    if a.ndim == 2 and a.shape[1] < width else a
+                    for a in arrays]
+                logging.warning(
+                    "Mixed geom_grid widths %s: padded short faults with zero "
+                    "slip columns (doSubFault=True/False mixed).", ncols)
+            else:
+                raise ValueError(
+                    "Cannot stack %r: sub-faults have different column counts "
+                    "%s; check that every fault uses a consistent geometry "
+                    "format." % (name, ncols))
         return np.vstack(arrays)
 
     @property

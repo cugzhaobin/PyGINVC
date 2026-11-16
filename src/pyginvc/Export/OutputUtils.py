@@ -15,6 +15,7 @@ import os
 import glob
 import shutil
 import logging
+import tempfile
 import numpy as np
 import h5py
 import pandas as pd
@@ -58,54 +59,69 @@ def write_solution_h5(filename, obs, fault, solution):
                    (vertex_enu, vertex_llh, element)
         solution = dict with slip, r, misfit and dhat
     '''
-    with h5py.File(filename, 'w') as h5:
-        # observation
-        grp = h5.create_group('obs')
-        for key in ('llh_gps', 'llh_lev', 'llh_sar', 'unit',
-                    'd_gps', 'd_lev', 'd_sar'):
-            grp.create_dataset(key, data=obs[key], compression='gzip')
-        grp['ndim'] = obs['ndim']
-        # 逐 InSAR 文件的点数，绘图时据此拆分 track
-        if obs.get('n_sar') is not None:
-            grp.create_dataset('n_sar',
-                               data=np.asarray(obs['n_sar'], dtype=int))
-        # 估计的 ramp 对 InSAR 观测的贡献及逐 track 标记
-        if obs.get('d_sar_ramp') is not None:
-            grp.create_dataset('d_sar_ramp',
-                               data=np.asarray(obs['d_sar_ramp']),
-                               compression='gzip')
-        if obs.get('sar_ramp') is not None:
-            grp.create_dataset('sar_ramp',
-                               data=np.asarray(obs['sar_ramp'], dtype=bool))
+    # Write to a temporary file first, then replace atomically.  Opening the
+    # final path in mode 'w' truncates it immediately, so a concurrent run
+    # (or an HDF5 file-lock error) would leave a corrupt 0-byte solutions.h5
+    # and destroy the previous good result.
+    outdir = os.path.dirname(os.path.abspath(filename))
+    fd, tmpfile = tempfile.mkstemp(prefix='.solutions_', suffix='.h5',
+                                   dir=outdir)
+    os.close(fd)
+    try:
+        with h5py.File(tmpfile, 'w') as h5:
+            # observation
+            grp = h5.create_group('obs')
+            for key in ('llh_gps', 'llh_lev', 'llh_sar', 'unit',
+                        'd_gps', 'd_lev', 'd_sar'):
+                grp.create_dataset(key, data=obs[key], compression='gzip')
+            grp['ndim'] = obs['ndim']
+            # 逐 InSAR 文件的点数，绘图时据此拆分 track
+            if obs.get('n_sar') is not None:
+                grp.create_dataset('n_sar',
+                                   data=np.asarray(obs['n_sar'], dtype=int))
+            # 估计的 ramp 对 InSAR 观测的贡献及逐 track 标记
+            if obs.get('d_sar_ramp') is not None:
+                grp.create_dataset('d_sar_ramp',
+                                   data=np.asarray(obs['d_sar_ramp']),
+                                   compression='gzip')
+            if obs.get('sar_ramp') is not None:
+                grp.create_dataset('sar_ramp',
+                                   data=np.asarray(obs['sar_ramp'], dtype=bool))
 
-        # fault geometry
-        grp = h5.create_group('flt')
-        grp.create_dataset('origin', data=fault['origin'], compression='gzip')
-        flttype = fault['flttype']
-        grp.create_dataset('flttype', data=flttype)
-        if flttype == 'rectangle':
-            for key in ('dis_geom', 'geom'):
-                grp.create_dataset(key, data=fault[key], compression='gzip')
-        elif flttype == 'triangle':
-            for key in ('vertex_enu', 'vertex_llh', 'element'):
-                grp.create_dataset(key, data=fault[key], compression='gzip')
-        else:
-            raise ValueError('unsupported flttype: %s' % flttype)
+            # fault geometry
+            grp = h5.create_group('flt')
+            grp.create_dataset('origin', data=fault['origin'], compression='gzip')
+            flttype = fault['flttype']
+            grp.create_dataset('flttype', data=flttype)
+            if flttype == 'rectangle':
+                for key in ('dis_geom', 'geom'):
+                    grp.create_dataset(key, data=fault[key], compression='gzip')
+            elif flttype == 'triangle':
+                for key in ('vertex_enu', 'vertex_llh', 'element'):
+                    grp.create_dataset(key, data=fault[key], compression='gzip')
+            else:
+                raise ValueError('unsupported flttype: %s' % flttype)
 
-        # solution
-        grp = h5.create_group('sol')
-        for key in ('slip', 'r', 'misfit', 'dhat'):
-            grp.create_dataset(key, data=solution[key], compression='gzip')
-        # optional metadata: smoothing factors, final model index, ramp, etc.
-        for key in ('smo_facts', 'ruff', 'chosen_index',
-                    'ramp_sar', 'sar_ramp_flag'):
-            value = solution.get(key)
-            if value is None:
-                continue
-            value = np.asarray(value)
-            if value.size == 0:
-                continue
-            grp.create_dataset(key, data=value, compression='gzip')
+            # solution
+            grp = h5.create_group('sol')
+            for key in ('slip', 'r', 'misfit', 'dhat'):
+                grp.create_dataset(key, data=solution[key], compression='gzip')
+            # optional metadata: smoothing factors, final model index, ramp, etc.
+            for key in ('smo_facts', 'ruff', 'chosen_index',
+                        'ramp_sar', 'sar_ramp_flag'):
+                value = solution.get(key)
+                if value is None:
+                    continue
+                value = np.asarray(value)
+                if value.size == 0:
+                    continue
+                grp.create_dataset(key, data=value, compression='gzip')
+
+        os.replace(tmpfile, filename)
+        logging.info('Solution HDF5 written to %s', filename)
+    finally:
+        if os.path.exists(tmpfile):
+            os.remove(tmpfile)
 
 
 # --------------------------------------------------------------------------- #

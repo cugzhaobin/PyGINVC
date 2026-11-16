@@ -5,8 +5,9 @@
 # MOD by Zhao Bin, Institute of Seismology, CEA. Feb. 24, 2018. Adding parameter eqdep for the depth of epicenter
 
 import sys
+import argparse
 import numpy as np
-import geotools as gt
+from pyginvc.libs import geotools as gt
 
 def gen_fautgeom(origin, eqdep, leng, width, topdep, strike, dip, ss, ds, op):
     '''
@@ -44,26 +45,34 @@ def gen_fautgeom(origin, eqdep, leng, width, topdep, strike, dip, ss, ds, op):
     
     return geom
 
-if len(sys.argv) != 10:
-    print(sys.argv[0] + ' <eqlon> <eqlat> <eqdep> <top-dep> <strike> <dip> <leng> <wid> <Mw>')
-    print('   deg   deg  km  deg deg  km km Mw')
-    sys.exit()
-    
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description='Make a single-patch FaultGeom from a focal mechanism.')
+    parser.add_argument('eqlon',  type=float, help='epicenter longitude (deg)')
+    parser.add_argument('eqlat',  type=float, help='epicenter latitude (deg)')
+    parser.add_argument('eqdep',  type=float, help='earthquake depth (km)')
+    parser.add_argument('topdep', type=float, help='top of fault plane (km)')
+    parser.add_argument('strike', type=float, help='strike (deg)')
+    parser.add_argument('dip',    type=float, help='dip (deg)')
+    parser.add_argument('leng',   type=float, help='fault length (km)')
+    parser.add_argument('wid',    type=float, help='fault width (km)')
+    parser.add_argument('mw',     type=float, help='moment magnitude Mw')
+    args = parser.parse_args(sys.argv[1:] if argv is None else argv)
 
-eqlon   = float(sys.argv[1])
-eqlat   = float(sys.argv[2])
-eqdep   = float(sys.argv[3])
-topdep  = float(sys.argv[4])
-strike  = float(sys.argv[5])
-dip     = float(sys.argv[6])
-leng    = float(sys.argv[7])
-wid     = float(sys.argv[8])
-mw      = float(sys.argv[9])
-Mo      = gt.mw2mo(mw)
-slip    = Mo/leng/wid/1e3/3e10
-origin  = [eqlat, eqlon]
-geom    = gen_fautgeom(origin, eqdep, leng, wid, topdep, strike, dip, slip, slip, 0.0)
+    Mo     = gt.mw2mo(args.mw)
+    slip   = Mo/args.leng/args.wid/1e3/3e10
+    origin = [args.eqlat, args.eqlon]
+    geom   = gen_fautgeom(origin, args.eqdep, args.leng, args.wid,
+                          args.topdep, args.strike, args.dip,
+                          slip, slip, 0.0)
 
-fmt     = 7*'%10.4f'+3*'%12.4f'
-print("#    width   top-dep       dip     s-lat     s-lon     e-lat     e-lon    s-slip        d-slip     opening")
-print(fmt %(geom[0], geom[1], geom[2], geom[3], geom[4], geom[5], geom[6], geom[7], geom[8], geom[9]))
+    fmt = 7*'%10.4f'+3*'%12.4f'
+    print("#    width   top-dep       dip     s-lat     s-lon     e-lat     e-lon"
+          "    s-slip        d-slip     opening")
+    print(fmt % (geom[0], geom[1], geom[2], geom[3], geom[4],
+                 geom[5], geom[6], geom[7], geom[8], geom[9]))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

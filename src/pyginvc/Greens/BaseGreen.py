@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # Written by Zhao Bin, Aug. 26, 2020.
 import numpy as np
-import logging, os, h5py
+import logging, os, h5py, hashlib
 import pyginvc.libs.geotools as gt
 
 logging.basicConfig(
@@ -42,6 +42,36 @@ class BaseGreen(object):
         path = self.greenfile
         return path is None or str(path).strip().upper() == 'NONE'
 
+    def _cache_fingerprint(self):
+        '''Hash the fault geometry and observation coordinates behind a cache.
+
+        The cached matrices only record their shape, so changing the fault
+        mesh (or the InSAR/GPS sampling) while keeping the same number of
+        patches and points would otherwise reuse a stale Green's function.
+        '''
+        h = hashlib.sha1()
+        arrays = [getattr(self.flt, 'dis_geom_grid', None),
+                  getattr(self.flt, 'geom_grid', None)]
+        for name in ('llh_gps', 'llh_lev', 'llh_sar', 'unit'):
+            arrays.append(getattr(self.data, name, None))
+        for arr in arrays:
+            if arr is None:
+                continue
+            a = np.ascontiguousarray(np.asarray(arr, dtype=float))
+            h.update(str(a.shape).encode())
+            h.update(a.tobytes())
+        return h.hexdigest()
+
+    @staticmethod
+    def _decode_fingerprint(value):
+        if value is None:
+            return None
+        v = np.asarray(value).ravel()
+        if v.size == 0:
+            return None
+        item = v[0]
+        return item.decode() if isinstance(item, bytes) else str(item)
+
     def load_greens(self):
         '''
         Load Green's function.
@@ -61,6 +91,8 @@ class BaseGreen(object):
                 G_sar      = h5['G_sar'][()]
                 G_gps_ramp = h5['G_gps_ramp'][()]
                 G_sar_ramp = h5['G_sar_ramp'][()]
+                cached_fp  = self._decode_fingerprint(
+                    h5['fingerprint'][()] if 'fingerprint' in h5 else None)
         elif ext in ('npy', 'npz'):
             # np.load returns a bare ndarray for .npy files, which cannot
             # store the four matrices of a cache; only .npz is a keyed
@@ -84,15 +116,29 @@ class BaseGreen(object):
                 G_sar      = dat['G_sar']
                 G_gps_ramp = dat['G_gps_ramp']
                 G_sar_ramp = dat['G_sar_ramp']
+                cached_fp  = self._decode_fingerprint(
+                    dat['fingerprint'] if 'fingerprint' in dat.files else None)
             finally:
                 dat.close()
         else:
             logging.warning('Unsupported green file {}'.format(greenfile))
             return False
 
-        # A cached green file must match the current data layout.  Otherwise
-        # (e.g. the file was generated with InSAR points that are not used in
-        # this run) reusing it gives matrices with the wrong number of rows.
+        # A cached green file must match the current geometry AND data layout.
+        # Shape alone is not enough: rebuilding a fault mesh with the same
+        # number of patches would otherwise silently reuse an obsolete matrix.
+        expected_fp = self._cache_fingerprint()
+        if cached_fp != expected_fp:
+            if cached_fp is None:
+                logging.warning(
+                    'Green cache %s has no geometry fingerprint '
+                    '(written by an older run). Regenerating.', greenfile)
+            else:
+                logging.warning(
+                    'Green cache %s was built for different fault geometry or '
+                    'observation points. Regenerating.', greenfile)
+            return False
+
         nf3    = 3 * self.flt.nf
         n_geod = len(self.data.llh_gps) * self.data.ndim + len(self.data.llh_lev)
         n_sar  = len(self.data.llh_sar)
@@ -137,6 +183,7 @@ class BaseGreen(object):
             h5.create_dataset('G_sar', data = self.G_sar, compression='gzip')
             h5.create_dataset('G_gps_ramp', data = self.G_gps_ramp, compression='gzip')
             h5.create_dataset('G_sar_ramp', data = self.G_sar_ramp, compression='gzip')
+            h5.create_dataset('fingerprint', data = self._cache_fingerprint())
             logging.info('Green function is saved to {}'.format(greenfile))
 
     def rotate_greens(self, greenfile='green_rot.h5'):
