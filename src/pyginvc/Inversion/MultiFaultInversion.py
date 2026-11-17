@@ -20,21 +20,14 @@ logging.basicConfig(
 
 class MultiFaultInversion(BaseInversion):
     '''
-    多断层、多数据源的滑动反演，是 GeoInversion 的升级版：
-    接收已加载并聚合的观测数据与断层，内部完成格林函数、平滑矩阵、ramp、
-    权重、边界的构建，并按平滑因子扫描求解与输出。
+    Slip inversion for multiple faults, with optional ramp estimation for each InSAR track.
 
     Input:
-        data    = GeoDataCollection，已加载并聚合的观测数据
-        faults  = FaultCollection，已加载并聚合的断层
-        origin  = 公共参考原点 [lat, lon]；缺省取 faults.origin
-        config  = 全局配置（YAML 的 global 段）
-        export  = 输出配置（YAML 的 export 段）
-
-    复用 BaseInversion 提供的 get_smoothing_factors / solve_least_squares /
-    compute_residuals / set_slip_bounds。权重由
-    GeoDataCollection.get_weights() 按文件聚合，在 prepare() 里一次性取得，
-    不再使用 BaseInversion.get_weight()（它面向单断层 GeoData）。
+        data    = GeoDataCollection
+        faults  = FaultCollection
+        origin  = [lat, lon]; default faults.origin
+        config  = global session of YAML
+        export  = export session of YAML
     '''
 
     def __init__(self, data, faults, origin=None, config=None, export=None):
@@ -59,8 +52,6 @@ class MultiFaultInversion(BaseInversion):
         self.G_data = None
         self.G_ramp = None
         self.n_ramp = 0
-        # 每个 InSAR 文件是否估计了 ramp，以及最终模型的 ramp 系数与
-        # 其对观测的影响（长度 = InSAR 总点数），供绘图使用
         self.sar_ramp_flag = None
         self.ramp = None
         self.ramp_sar = None
@@ -78,13 +69,14 @@ class MultiFaultInversion(BaseInversion):
 
 
     def prepare(self):
-        '''构建反演所需的全部矩阵与向量，可重复调用。'''
+        '''
+        Prepare data and green functions for inversion
+        '''
+        
         faults = self.faults
 
-        # 数据向量与维度必须先于 build_green 确定：格林函数的行数直接取自
-        # n_geod/n_sar，不再按 llh 推算第二遍。
         d_gps, d_lev, d_sar = self.data.d_gps, self.data.d_lev, self.data.d_sar
-        geod_parts = [x for x in (d_gps, d_lev) if len(x) > 0]
+        geod_parts  = [x for x in (d_gps, d_lev) if len(x) > 0]
         self.d_geod = (np.hstack(geod_parts) if geod_parts
                        else np.array([]))
         self.d_sar  = d_sar
@@ -92,18 +84,18 @@ class MultiFaultInversion(BaseInversion):
         self.n_sar  = len(d_sar)
         self.nf3    = 3 * faults.nf
 
-        # 格林函数（逐断层横向拼接）
+        # Green's functions
         self.Gmat, self.G_sar = self.build_green()
         self.G_data = np.vstack([self.Gmat, self.G_sar])
 
-        # 平滑矩阵（逐断层块对角）
+        # Lap matrix
         self.G_lap = self.build_laps()
 
-        # 权重 / ramp
+        # data weight & ramp
         self.W, self.WSAR = self.data.get_weights()
         self.G_ramp, self.n_ramp = self.build_ramp()
 
-        # 加权矩阵/向量只依赖数据与权重，按平滑因子循环求解时直接复用。
+        # weighted Green's functions and data
         self._Gw      = (self.W @ self.Gmat if self.n_geod
                          else np.zeros((0, self.nf3)))
         self._Gsarw   = (self.WSAR @ self.G_sar if self.n_sar
@@ -116,8 +108,6 @@ class MultiFaultInversion(BaseInversion):
         self._d2I     = np.hstack([self._d2R, np.zeros(self.nf3)])
 
         if self.n_ramp > 0:
-            # Ramp 列必须与它们描述的数据使用相同的行权重；否则 ramp 会在
-            # 未加权尺度上吸收噪声并偏置滑动估计。
             ramp_parts = []
             if self.n_geod:
                 ramp_parts.append(self.W @ self.G_ramp[:self.n_geod])
@@ -130,7 +120,7 @@ class MultiFaultInversion(BaseInversion):
 
         self.geom_grid = faults.geom_grid
 
-        # 边界
+        # slip boundaries
         self.bound_switch = self.dict_bound.get('bound_switch', True)
         if self.bound_switch:
             self.bl, self.bu = self.build_bounds()
@@ -139,7 +129,7 @@ class MultiFaultInversion(BaseInversion):
         return self
 
     def solve(self, smo):
-        '''给定平滑因子求解一次，返回解及各项统计量。'''
+        '''inversion'''
         self._ensure_prepared()
 
         G2I_slip = np.vstack([self._Gw,
@@ -157,16 +147,13 @@ class MultiFaultInversion(BaseInversion):
         x = self.solve_least_squares(G2I, d2I, self.bl, self.bu)
         slip = x[:self.nf3]
 
-        # ramp 系数及其对 InSAR 观测的贡献（无 ramp 时为全 0）
+        # ramp contributon to SAR data
         ramp_hat = x[self.nf3:] if self.n_ramp > 0 else np.array([])
         if self.n_ramp > 0 and self.n_sar > 0:
             ramp_sar = self.G_ramp[self.n_geod:] @ ramp_hat
         else:
             ramp_sar = np.zeros(self.n_sar)
 
-        # 预测与残差（加权空间，复用 BaseInversion.compute_residuals）。
-        # pred 由未加权的 G_data/G_ramp 直接给出，传入 dhat 可省掉
-        # compute_residuals 里重复的 G2R @ x。
         pred = self.G_data @ slip
         if self.n_ramp > 0:
             pred = pred + self.G_ramp @ ramp_hat
@@ -179,7 +166,7 @@ class MultiFaultInversion(BaseInversion):
         # differs when L is not symmetric, e.g. for mirrored bcs=1 edges).
         lap_slip = self.G_lap @ slip
         ruff     = float(lap_slip @ lap_slip)
-        Mo, Mw = self.faults.total_moment(
+        Mo, Mw   = self.faults.total_moment(
             slip, default_modulus=self._default_modulus())
 
         return {
@@ -198,7 +185,7 @@ class MultiFaultInversion(BaseInversion):
         }
 
     def _default_modulus(self):
-        '''全局默认剪切模量：顶层 modulus 优先，其次 green.modulus。'''
+        '''get shear modulus'''
         mod = self.config.get('modulus')
         if mod is None:
             mod = (self.config.get('green') or {}).get('modulus', 3e10)
@@ -206,12 +193,10 @@ class MultiFaultInversion(BaseInversion):
 
     def run(self, smo_facts=None, output=None):
         '''
-        按平滑因子扫描求解并输出，返回汇总行列表。
 
         Input:
-            smo_facts = 平滑因子数组；缺省用 get_smoothing_factors()
-            output    = 输出对象（通常为 Export.MultiOutput）；缺省按
-                        self.export 里的 outpath/archdir 自建一个
+            smo_facts = smoothing factor
+            output    = 
         '''
         self._ensure_prepared()
 
@@ -247,11 +232,10 @@ class MultiFaultInversion(BaseInversion):
             misfit_sar.append(r['misfit_sar'])
             rough.append(r['roughness'])
             moment.append((r['Mo'], r['Mw']))
-            logging.info('sm=%7.3f  WRSS_gps=%10.3f  WRSS_sar=%10.3f  roughness=%10.3f  Mw=%6.2f'
-                         % (smo, r['misfit_gps'], r['misfit_sar'],
-                            r['roughness'], r['Mw']))
+            logging.info('sm=%.3f  WRSS_gps=%10.3f  WRSS_sar=%10.3f  Mw=%.2f'
+                         % (smo, r['misfit_gps'], r['misfit_sar'], r['Mw']))
 
-        # 与 BaseInversion 的解决方案属性保持一致
+        # 
         self.smo_facts  = np.asarray(smo_facts)
         self.slip       = np.asarray(slip)
         self.misfit_gps = np.asarray(misfit_gps)
@@ -265,7 +249,7 @@ class MultiFaultInversion(BaseInversion):
         self.ramp       = np.asarray(last['ramp'])
         self.ramp_sar   = np.asarray(last['ramp_sar'])
 
-        # 全局输出：HDF5、汇总、L 曲线、GMT 滑移（取最后一个平滑因子）
+        # Output results
         output.WriteHDF5()
         output.WriteSummary()
         output.WriteLCurve()
@@ -317,14 +301,8 @@ class MultiFaultInversion(BaseInversion):
 
 
     def build_green(self):
-        """逐断层构建（或复用缓存）格林函数，并按断层横向拼接。
-
-        全局 global.green 段与逐断层 green 段合并，逐断层优先；未给出的
-        greentype/nu/method/modulus 用安全默认值补齐，避免 KeyError。
-        method 支持 'okada'（均匀半空间）与 'wang'（R. J. Wang 层状模型，
-        通过 EDCMP 计算，需要 edgrn 生成的格林函数文件）。
-        每个断层使用独立的缓存文件，防止多条断层共用同一文件而读到彼此
-        错位的矩阵。
+        """
+        Build Green's functions
         """
         G_blocks, Gsar_blocks = [], []
         os.makedirs(self.outpath, exist_ok=True)

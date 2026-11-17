@@ -849,6 +849,12 @@ class Fault(object):
         and cannot be used as an mplot3d axis, so the two views are separate
         subplots. If cartopy is not installed, only the 3D view is drawn.
 
+        coordtype : {'llh', 'enu', 'neu'}, optional
+            Coordinate system of the 3D view. 'enu' and 'neu' are the same
+            local East/North/Up frame ('neu' is accepted as an alias because
+            the package uses that spelling for the same Cartesian vertex
+            table). The default is 'llh'.
+
         field : str, optional
             Quantity used to colour the patches and label the colour bar.
             One of 'slip'/'total_slip', 'strike_slip', 'dip_slip',
@@ -887,6 +893,16 @@ class Fault(object):
         import matplotlib.pyplot as plt
         import matplotlib.colors as mcolors
         from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+        # 'neu' (North-East-Up) names the same local Cartesian frame as
+        # 'enu'; accept it as an alias so callers can use either spelling.
+        coordtype = str(coordtype).strip().lower()
+        if coordtype == 'neu':
+            coordtype = 'enu'
+        if coordtype not in ('llh', 'enu'):
+            raise ValueError(
+                "coordtype must be 'llh' or 'enu'/'neu', got %r"
+                % coordtype)
 
         felem = self.FaultGeom2AllVertex()
 
@@ -1022,11 +1038,26 @@ class Fault(object):
             span_x  = _span(lon_all) * 111.32 * coslat
             span_y  = _span(lat_all) * 111.32
         else:
+            # enu/neu coordinates are already in km.
             span_x  = _span(x)
             span_y  = _span(y)
         span_z = _span(z)
-        if min(span_x, span_y, span_z) > 0:
-            ax.set_box_aspect((span_x, span_y, span_z))
+        # Always set the box aspect: a zero extent (e.g. a horizontal fault
+        # has no depth span) must not disable the true-scale box and fall
+        # back to the default (4, 4, 3).  Use a tiny floor for such axes so
+        # the remaining two keep their relative scale.
+        scale = max(span_x, span_y, span_z, 1e-9)
+        floor = 1e-3 * scale
+        ax.set_box_aspect((max(span_x, floor),
+                           max(span_y, floor),
+                           max(span_z, floor)))
+        if coordtype == 'enu' and hasattr(ax, 'set_proj_type'):
+            # In the local km frame an orthographic projection keeps
+            # projected lengths proportional to the real distances.  The
+            # default perspective shrinks the far end of a large fault,
+            # which makes the neu/enu view look out of proportion.
+            # (set_proj_type('ortho') needs matplotlib >= 3.6.)
+            ax.set_proj_type('ortho')
 
         # Per-patch slip vectors, used by the optional vector overlay.
         #

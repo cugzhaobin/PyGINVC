@@ -75,9 +75,6 @@ class SARData(object):
         self.llh_sar  = llh_sar
         self.d_sar    = d_sar.flatten()*scale
         self.unit     = unit
-    
-        # print processing status
-        logging.info('{} InSAR points are loaded.'.format(len(self.llh_sar)))
 
     def build_spatial_cov(self):
         '''

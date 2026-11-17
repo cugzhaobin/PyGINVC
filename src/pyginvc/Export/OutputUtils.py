@@ -52,8 +52,10 @@ def write_solution_h5(filename, obs, fault, solution):
     Input:
         filename = output file name
         obs      = dict with llh_gps, llh_lev, llh_sar, unit, d_gps, d_lev,
-                   d_sar and ndim; optional n_sar holds the point count of
-                   each InSAR file (track), used to split plots per file
+                   d_sar and ndim; optional n_sar/n_gps/n_lev hold the point
+                   count of each InSAR track / GPS file / leveling file and
+                   gps_files/lev_files/sar_files their file names, used to
+                   split plots and fit statistics per file
         fault    = dict with origin, flttype, plus rectangle keys
                    (dis_geom, geom) or triangle keys
                    (vertex_enu, vertex_llh, element)
@@ -79,6 +81,18 @@ def write_solution_h5(filename, obs, fault, solution):
             if obs.get('n_sar') is not None:
                 grp.create_dataset('n_sar',
                                    data=np.asarray(obs['n_sar'], dtype=int))
+            # 逐文件的点数与文件名，报告按文件统计拟合误差时使用
+            for key in ('n_gps', 'n_lev'):
+                value = obs.get(key)
+                if value is not None and np.size(value):
+                    grp.create_dataset(key, data=np.asarray(value, dtype=int))
+            name_dtype = h5py.string_dtype(encoding='utf-8')
+            for key in ('gps_files', 'lev_files', 'sar_files'):
+                value = obs.get(key)
+                if value is not None and np.size(value):
+                    grp.create_dataset(
+                        key, data=[str(v) for v in np.ravel(value)],
+                        dtype=name_dtype)
             # 估计的 ramp 对 InSAR 观测的贡献及逐 track 标记
             if obs.get('d_sar_ramp') is not None:
                 grp.create_dataset('d_sar_ramp',
@@ -547,6 +561,134 @@ def write_lcurve(filename, ruff, misfit, smo_facts, moment):
     np.savetxt(filename, ruff_misfit, header=header,
                fmt='%10.2f\t%10.2f\t%10.4f\t%10.2e\t%10.2f')
     return True
+
+
+# --------------------------------------------------------------------------- #
+# Per-file fit statistics
+# --------------------------------------------------------------------------- #
+def fit_statistics(obs, pred, residual=None):
+    '''
+    Fit statistics for one data set.
+
+    Input:
+        obs      = observed values
+        pred     = modelled values (same length as obs)
+        residual = optional weighted residual used by the inversion.  When
+                   omitted, the unweighted residual obs - pred is used.
+    Output:
+        (n, WRMS, WRSS/N, variance reduction) or None for empty input
+
+    WRMS is the unweighted rms misfit in the observation unit (mm).
+    WRSS/N uses the supplied weighted residual so it is consistent with the
+    inversion objective/summary.  Variance reduction is
+    ``1 - sum((obs-pred)^2) / sum((obs-mean(obs))^2)``.
+    '''
+    obs  = np.asarray(obs, dtype=float).ravel()
+    pred = np.asarray(pred, dtype=float).ravel()
+    n    = min(obs.size, pred.size)
+    if n == 0:
+        return None
+
+    obs, pred = obs[:n], pred[:n]
+    res  = obs - pred
+    good = np.isfinite(res)
+    if not good.any():
+        return None
+
+    wrms = float(np.sqrt(np.mean(res[good] ** 2)))
+
+    if residual is not None:
+        residual = np.asarray(residual, dtype=float).ravel()[:n]
+        good_r   = np.isfinite(residual)
+        wrss     = float(np.sum(residual[good_r] ** 2))
+    else:
+        wrss     = float(np.sum(res[good] ** 2))
+
+    obs_good = obs[good]
+    denom    = float(np.sum((obs_good - obs_good.mean()) ** 2))
+    vr       = (1.0 - float(np.sum(res[good] ** 2)) / denom
+                if denom > 0 else float('nan'))
+    return n, wrms, wrss / n, vr
+
+
+def _stat_groups(total, counts, names, default, scale=1):
+    '''
+    Split ``total`` scalar observations into per-file groups.
+
+    ``counts`` are per-file counts in native units (stations for GPS) and
+    ``scale`` converts them to scalar observations.  Returns a list of
+    ``(label, n_observations)`` and falls back to one group when the counts
+    do not add up.
+    '''
+    if total <= 0:
+        return []
+    try:
+        counts = np.asarray(counts, dtype=int).ravel()
+    except (TypeError, ValueError):
+        counts = np.array([], dtype=int)
+
+    if counts.size == 0 or int(counts.sum()) * scale != int(total):
+        return [(default, int(total))]
+
+    names = list(names or [])
+    if len(names) != counts.size:
+        names = []
+
+    groups = []
+    for i, n in enumerate(counts):
+        label = names[i] if names and names[i] else (
+            '%s %d' % (default, i + 1) if counts.size > 1 else default)
+        groups.append((label, int(n) * scale))
+    return groups
+
+
+def fit_table(obs_gps, ndim, obs_lev, obs_sar, dhat, residual=None,
+              n_gps=None, n_lev=None, n_sar=None,
+              gps_names=None, lev_names=None, sar_names=None):
+    '''
+    Per-file fit table for the HTML reports.
+
+    The data vector order is GPS (nsta*ndim), leveling, InSAR -- the same
+    order in which ``dhat`` and the weighted residual are assembled.
+
+    Output:
+        list of rows ``[label, type, n, WRMS, WRSS/N, variance reduction]``
+        (variance reduction is a fraction, not a percentage).
+    '''
+    obs_gps = np.asarray(obs_gps, dtype=float).ravel()
+    obs_lev = np.asarray(obs_lev, dtype=float).ravel()
+    obs_sar = np.asarray(obs_sar, dtype=float).ravel()
+    dhat    = np.asarray(dhat,    dtype=float).ravel()
+    if residual is not None:
+        residual = np.asarray(residual, dtype=float).ravel()
+
+    total = obs_gps.size + obs_lev.size + obs_sar.size
+    if total == 0 or dhat.size < total:
+        return []
+    if residual is not None and residual.size < total:
+        residual = None
+
+    specs = (
+        ('GPS',      obs_gps, n_gps, gps_names, int(ndim or 1)),
+        ('Leveling', obs_lev, n_lev, lev_names, 1),
+        ('InSAR',    obs_sar, n_sar, sar_names, 1),
+    )
+
+    rows   = []
+    offset = 0
+    for typ, obs, counts, names, scale in specs:
+        groups = _stat_groups(obs.size, counts, names, typ, scale)
+        cursor = 0
+        for label, n in groups:
+            sl    = slice(offset, offset + n)
+            stats = fit_statistics(obs[cursor:cursor + n], dhat[sl],
+                                   None if residual is None else residual[sl])
+            if stats is not None:
+                rows.append([label, typ, stats[0], stats[1], stats[2],
+                             stats[3]])
+            cursor += n
+            offset += n
+    return rows
 
 
 # --------------------------------------------------------------------------- #

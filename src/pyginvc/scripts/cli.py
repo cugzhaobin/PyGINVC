@@ -88,6 +88,9 @@ COMMANDS = {
     'multi-slip': (
         'pyginvc.scripts.MultiFaultSlipInversion', 'main',
         'Multi-fault / multi-file slip inversion from YAML', 'invert'),
+    'unified-slip': (
+        'pyginvc.scripts.UnifiedSlipInversion', 'main',
+        'Rectangular, triangular or mixed-fault slip inversion', 'invert'),
     'multi-slip-legacy': (
         'pyginvc.scripts.MultiFaultSlipRun', 'main',
         'Legacy multi-fault slip inversion (hard-coded script)', 'invert'),
@@ -131,6 +134,9 @@ COMMANDS = {
     'view': (
         'pyginvc.scripts.InversionView', 'main',
         'View inversion results (obs vs prediction, slip)', 'plot'),
+    'unified-view': (
+        'pyginvc.scripts.UnifiedView', 'main',
+        'Plot unified or legacy inversion results', 'plot'),
 
     'forward': (
         'pyginvc.scripts.ForwardRun', 'main',

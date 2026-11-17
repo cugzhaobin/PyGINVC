@@ -19,6 +19,7 @@ Usage::
     make_report('GPS_WX_T070A/solutions.h5')
 """
 
+import html as _html
 import logging
 import os
 
@@ -106,6 +107,141 @@ def load_fault_felem(outdir):
         return frames[0]
     import pandas as pd
     return pd.concat(frames, ignore_index=True)
+
+
+def _decode_kind(value):
+    return value.decode() if isinstance(value, bytes) else str(value)
+
+
+def _unified_kinds(h5):
+    """Fault kinds stored in a ``schema_version >= 2`` solution file."""
+    if 'flt' not in h5 or 'faults' not in h5['flt']:
+        return []
+    base = h5['flt']['faults']
+    return [_decode_kind(base[name]['kind'][()]) for name in sorted(base)]
+
+
+def _triangle_felem(fg, slip, origin):
+    """Build a FaultGeom2AllVertex-style table for one triangle mesh.
+
+    Triangular patches have three corners; the fourth (``lt``) duplicates the
+    third so the existing quad-based plotting code can render them as
+    degenerate quads.
+    """
+    import pandas as pd
+
+    vertex = np.asarray(fg['vertex_llh'][()], dtype=float)
+    element = np.asarray(fg['element'][()], dtype=int) - 1
+    corners = vertex[element]                      # (nf, 3, [lat, lon, dep])
+    nf = len(element)
+
+    lat0, lon0 = float(origin[0]), float(origin[1])
+    coslat = np.cos(np.radians(lat0))
+
+    # The vertex file stores depth positive downwards, but the rectangle
+    # felem returned by FaultGeom2AllVertex follows VTK/EFCS sign (z positive
+    # up, i.e. negative below the surface).  Convert here so both fault kinds
+    # share one depth convention in the plots.
+    corners[:, :, 2] = -corners[:, :, 2]
+
+    def enu(pt):
+        lat, lon, z = pt[:, 0], pt[:, 1], pt[:, 2]
+        return np.column_stack([
+            (lon - lon0) * KM_PER_DEG * coslat,
+            (lat - lat0) * KM_PER_DEG,
+            z])
+
+    a, b, c = corners[:, 0, :], corners[:, 1, :], corners[:, 2, :]
+    ea, eb, ec = enu(a), enu(b), enu(c)
+    edges = np.stack([eb - ea, ec - eb, ea - ec], axis=1)
+    edge_len = np.linalg.norm(edges, axis=2)
+    normal = np.cross(eb - ea, ec - ea)
+    n_norm = np.linalg.norm(normal, axis=1)
+    dip = np.degrees(np.arccos(np.clip(
+        np.abs(normal[:, 2]) / np.where(n_norm > 0, n_norm, 1.0), 0.0, 1.0)))
+    strike = np.degrees(np.arctan2(edges[:, 0, 0], edges[:, 0, 1])) % 360.0
+    area = 0.5 * n_norm
+    side = np.sqrt(np.where(area > 0, area, 0.0))
+
+    ss = np.asarray(slip[:, 0], dtype=float)
+    ds = np.asarray(slip[:, 1], dtype=float)
+    op = np.asarray(slip[:, 2], dtype=float)
+
+    data = {
+        'length': side, 'width': side,
+        'strike': strike, 'dip': dip,
+        'rake': np.degrees(np.arctan2(ds, ss)),
+        'strike_slip': ss, 'dip_slip': ds,
+        'tensile_slip': op,
+        'total_slip': np.linalg.norm(slip, axis=1),
+    }
+    tags = (('lb', a, ea), ('rb', b, eb), ('rt', c, ec), ('lt', c, ec))
+    for tag, llh, enu_pt in tags:
+        data[tag + '_lon'] = llh[:, 1]
+        data[tag + '_lat'] = llh[:, 0]
+        data[tag + '_dep'] = llh[:, 2]
+        data[tag + '_e'] = enu_pt[:, 0]
+        data[tag + '_n'] = enu_pt[:, 1]
+        data[tag + '_u'] = enu_pt[:, 2]
+    return pd.DataFrame(data)
+
+
+def _unified_felem(h5):
+    """Build the patch table for a ``schema_version >= 2`` solution file.
+
+    Rectangles are rebuilt through ``FaultGeom2AllVertex`` exactly like the
+    legacy layout; triangles are converted to degenerate quads.
+    """
+    import pandas as pd
+
+    from pyginvc.Geometry.Patch import Fault
+    from pyginvc.Export.OutputUtils import rotate_slip
+
+    flt = h5['flt']
+    if 'faults' not in flt:
+        return None
+
+    slip = np.asarray(h5['sol/slip'][()], dtype=float)
+    if slip.ndim > 1:
+        chosen = h5['sol/chosen_index'][()] \
+            if 'sol/chosen_index' in h5 else None
+        if chosen is not None and np.size(chosen):
+            index = int(np.atleast_1d(chosen).ravel()[-1])
+        else:
+            index = slip.shape[0] - 1
+        slip = slip[index]
+    slip = slip.reshape(-1)
+    origin = np.asarray(flt['origin'][()], dtype=float)
+
+    base = flt['faults']
+    frames = []
+    for name in sorted(base.keys(), key=lambda s: int(s)):
+        fg = base[name]
+        kind = _decode_kind(fg['kind'][()])
+        nf = int(fg['nf'][()])
+        offset = int(fg['slip_offset'][()])
+        block = slip[offset:offset + 3 * nf].reshape(nf, 3)
+        beta = float(fg['rake_beta'][()]) if 'rake_beta' in fg else 0.0
+        block = rotate_slip(block, beta)
+
+        if kind == 'rectangle':
+            geom = np.asarray(fg['geom'][()], dtype=float)
+            dis = np.asarray(fg['dis_geom'][()], dtype=float).copy()
+            dis[:, 7:10] = block
+            fault = Fault.__new__(Fault)
+            fault.nf = nf
+            fault.geom_grid = geom
+            fault.dis_geom_grid = dis
+            fault.origin = np.array([
+                np.mean(geom[:, [3, 5]]), np.mean(geom[:, [4, 6]])])
+            frames.append(fault.FaultGeom2AllVertex())
+        else:
+            frames.append(_triangle_felem(fg, block, origin))
+
+    if not frames:
+        return None
+    return frames[0] if len(frames) == 1 else pd.concat(
+        frames, ignore_index=True)
 
 
 def figure_slip_3d(felem, depth_exaggeration=1.0, show_arrows=True,
@@ -480,6 +616,51 @@ def figure_insar(llh_sar, counts, ob_all, mb_all, label='InSAR',
     return figs
 
 
+def _h5_names(grp, key):
+    """Read an optional string dataset (one entry per data file)."""
+    if key not in grp:
+        return []
+    out = []
+    for value in np.atleast_1d(grp[key][()]).ravel():
+        if isinstance(value, (bytes, np.bytes_)):
+            value = value.decode('utf-8', errors='replace')
+        out.append(str(value))
+    return out
+
+
+def _h5_counts(grp, key, default):
+    """Read an optional per-file count dataset, falling back to ``default``."""
+    if key not in grp:
+        return np.asarray(default, dtype=int)
+    try:
+        counts = np.atleast_1d(grp[key][()]).astype(int)
+    except (TypeError, ValueError):
+        return np.asarray(default, dtype=int)
+    return counts if counts.size else np.asarray(default, dtype=int)
+
+
+def _fit_stats_html(rows):
+    """Render the per-file fit table as HTML."""
+    if not rows:
+        return ''
+    body = []
+    for label, typ, n, wrms, wrss_n, vr in rows:
+        vr_txt = ('%.2f%%' % (100.0 * vr)) if np.isfinite(vr) else '-'
+        body.append(
+            '<tr><td>%s</td><td>%s</td><td>%d</td>'
+            '<td>%.3f</td><td>%.3f</td><td>%s</td></tr>'
+            % (_html.escape(str(label)), typ, int(n), wrms, wrss_n, vr_txt))
+    return (
+        '<h2>Data fit by file</h2>'
+        '<p class="hint">WRMS and variance reduction use unweighted '
+        'residuals; WRSS/N uses the inversion-weighted residual. Variance '
+        'reduction is relative to the mean of the observed values.</p>'
+        '<table class="fit"><thead><tr><th>Data file</th><th>Type</th>'
+        '<th>N</th><th>WRMS (mm)</th><th>WRSS/N</th>'
+        '<th>Variance reduction</th></tr></thead><tbody>%s</tbody></table>'
+        % ''.join(body))
+
+
 def make_report(solutionfile, outfile=None, embed=True,
                 depth_exaggeration=1.0, title=None, arrow_scale=1.0):
     """从 solutions.h5 生成交互式 HTML 报告，返回文件路径。
@@ -493,24 +674,59 @@ def make_report(solutionfile, outfile=None, embed=True,
     title = title or ('PyGINVC interactive report - %s'
                       % os.path.basename(outdir))
 
+    from pyginvc.Export import OutputUtils as ou
+
     with h5py.File(solutionfile, 'r') as h5:
         llh_gps = h5['obs/llh_gps'][()]
         ndim = int(h5['obs/ndim'][()])
         d_gps = h5['obs/d_gps'][()].reshape(len(llh_gps), ndim)
-        m_gps = h5['sol/dhat'][0:ndim * len(llh_gps)].reshape(len(llh_gps), ndim)
+        dhat = h5['sol/dhat'][()]
+        m_gps = dhat[0:ndim * len(llh_gps)].reshape(len(llh_gps), ndim)
         llh_sar = h5['obs/llh_sar'][()]
         n_lev = len(h5['obs/llh_lev'][()]) if 'llh_lev' in h5['obs'] else 0
         offset = ndim * len(llh_gps) + n_lev
         d_sar = h5['obs/d_sar'][()]
-        m_sar = h5['sol/dhat'][offset:offset + len(d_sar)]
+        m_sar = dhat[offset:offset + len(d_sar)]
         counts = View._sar_counts(h5)
-        # 与 View.plot_slip_3d 一致，先从 h5 构造 patch；失败再读 faultgeom 文件
+
+        # Per-file fit statistics.  Boundaries and names are optional, so
+        # solution files written by older versions still produce a table
+        # with one row per data type.
+        d_lev = (h5['obs/d_lev'][()] if 'd_lev' in h5['obs']
+                 else np.array([]))
+        residual = h5['sol/r'][()] if 'sol/r' in h5 else None
+        fit_rows = ou.fit_table(
+            d_gps, ndim, d_lev, d_sar, dhat, residual=residual,
+            n_gps=_h5_counts(h5['obs'], 'n_gps',
+                             [len(llh_gps)] if len(llh_gps) else []),
+            n_lev=_h5_counts(h5['obs'], 'n_lev', [n_lev] if n_lev else []),
+            n_sar=counts,
+            gps_names=_h5_names(h5['obs'], 'gps_files'),
+            lev_names=_h5_names(h5['obs'], 'lev_files'),
+            sar_names=_h5_names(h5['obs'], 'sar_files'))
+
+        # 与 View.plot_slip_3d 一致，先从 h5 构造 patch；失败再读 faultgeom 文件。
+        # schema_version >= 2 的 unified 文件用逐断层组构造，可混合矩形/三角形。
+        schema = 1
+        if 'flt' in h5 and 'schema_version' in h5['flt']:
+            try:
+                schema = int(np.atleast_1d(
+                    h5['flt/schema_version'][()]).ravel()[0])
+            except (TypeError, ValueError, IndexError):
+                schema = 1
+        rect_only = True
         try:
-            felem = View._fault_felem(h5)
+            if schema >= 2:
+                kinds = _unified_kinds(h5)
+                rect_only = set(kinds) <= {'rectangle'}
+                felem = _unified_felem(h5)
+            else:
+                felem = View._fault_felem(h5)
         except Exception as exc:
-            logger.warning('View._fault_felem failed: %s', exc)
+            logger.warning('fault geometry could not be read from h5: %s', exc)
             felem = None
-        if felem is None:
+            rect_only = False
+        if felem is None and schema < 2:
             try:
                 felem = load_fault_felem(outdir)
             except Exception:
@@ -544,13 +760,16 @@ def make_report(solutionfile, outfile=None, embed=True,
             '</div>' % (stats['n_patch'], stats['max_slip_mm'],
                         stats['mean_slip_mm'], stats['moment'], stats['mw']))
 
+    if fit_rows:
+        sections.append(_fit_stats_html(fit_rows))
+
     if felem is not None:
         sections.append('<h2>3D slip distribution</h2>'
                         '<p class="hint">Drag to rotate, scroll to zoom, '
                         'hover for per-patch values.</p>')
         add_fig(figure_slip_3d(felem, depth_exaggeration), 'slip3d')
 
-        fig2d = figure_slip_2d(felem)
+        fig2d = figure_slip_2d(felem) if rect_only else None
         if fig2d is not None:
             sections.append('<h2>2D slip distribution</h2>'
                             '<p class="hint">Slip on the fault plane: x = '
@@ -577,8 +796,8 @@ def make_report(solutionfile, outfile=None, embed=True,
 
     downloads = []
     for name in sorted(os.listdir(outdir)):
-        if name.endswith(('.h5', '.faultgeom', '.gmtlin', '.txt', '.summary')) \
-                or name == 'summary':
+        if name.endswith(('.h5', '.faultgeom', '.tri', '.gmtlin', '.txt',
+                          '.tsv', '.summary')) or name == 'summary':
             downloads.append('<li><a href="%s" download>%s</a></li>'
                              % (name, name))
     if downloads:
@@ -611,6 +830,14 @@ def make_report(solutionfile, outfile=None, embed=True,
             background:var(--card);border:1px solid var(--line);border-radius:8px;
             font-size:14px;cursor:pointer}
   .controls input{vertical-align:-2px;margin-right:4px}
+  table.fit{border-collapse:collapse;width:100%%;font-size:13px;background:var(--card);
+            border:1px solid var(--line);border-radius:8px;overflow:hidden;
+            margin:8px 0 16px}
+  table.fit th,table.fit td{padding:8px 12px;border-bottom:1px solid var(--line);
+                            text-align:right}
+  table.fit th:first-child,table.fit td:first-child{text-align:left}
+  table.fit thead th{background:#f0f3f6;font-weight:600}
+  table.fit tbody tr:last-child td{border-bottom:none}
 </style></head><body><main>
 %s
 </main>

@@ -61,12 +61,14 @@ def _auto_quiver_scale(lon, lat, *uv, fraction=0.1, margin=0.2):
     return maxmag / (fraction * span)
 
 def _div_norm(values):
-    '''TwoSlopeNorm centred on zero, built from a single data array.
+    '''TwoSlopeNorm centred on zero, built from one or more data arrays.
 
     Zero always maps to the centre of the diverging colormap (white), and
     the positive/negative sides use the actual asymmetric data range so the
-    colour limits are never clipped.  Every panel gets its own norm, so
-    observation, prediction and residual each have an independent colorbar.
+    colour limits are never clipped.  Passing several arrays (e.g. the
+    observation and the prediction) builds one shared norm, so the panels
+    use identical colour limits and can be compared directly in
+    ``report.html``.
     '''
     v = np.asarray(values, dtype=float).ravel()
     v = v[np.isfinite(v)]
@@ -397,12 +399,12 @@ def plot_obs_mod(solutionfile, scale=None, show=True):
                     ext   = _data_extent(lon, lat)
                     if felem is not None:
                         ext = _union_extent(ext, _fault_extent(felem))
-                    # 观测、预测、残差各自使用独立的 diverging 色标：
-                    # 零值固定到白色，两侧范围按各自数据展开
-                    cmap  = plt.cm.RdBu_r
-                    norm1 = _div_norm(ob)
-                    norm2 = _div_norm(mb)
-                    norm3 = _div_norm(rb)
+                    # 观测与预测共用同一个 diverging 色标（范围取两者并集，
+                    # 零值固定到白色），保证 report.html 中两幅图颜色一一对应、
+                    # 可直接比较；残差量级不同，仍使用独立色标
+                    cmap     = plt.cm.RdBu_r
+                    norm_fit = _div_norm(np.concatenate((ob, mb)))
+                    norm3    = _div_norm(rb)
                     (figsize, map_rects, hcbar_rects, vcbar_rect) = _geo_layout(
                         ext, ncols=3, vcbar=True, hcbar=True)
                     fig = plt.figure(figsize=figsize)
@@ -421,12 +423,12 @@ def plot_obs_mod(solutionfile, scale=None, show=True):
                     slip_coll = _draw_fault_slip(ax3, felem, trans)
 
                     s1 = ax1.scatter(lon, lat, c=ob,
-                                     cmap=cmap, norm=norm1, s=2,
+                                     cmap=cmap, norm=norm_fit, s=2,
                                      transform=trans)
                     ax1.set_title('InSAR%s LOS Observation' % tag)
 
                     s2 = ax2.scatter(lon, lat, c=mb,
-                                     cmap=cmap, norm=norm2, s=2,
+                                     cmap=cmap, norm=norm_fit, s=2,
                                      transform=trans)
                     ax2.set_title('InSAR%s LOS Prediction' % tag)
 

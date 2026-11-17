@@ -1,106 +1,98 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""
-trace2faultgeom.py
-==================
+"""Build a non-crossing quad fault mesh from a curved surface trace.
 
-Build a rectangular-patch faultgeom file from a **surface fault trace**.
-
-The trace (e.g. ``fault_trace.dat``, two columns of lon/lat) is discretised
-along strike into ``nsegs`` patches.  Every patch is extended down dip with a
-constant or depth-dependent dip, producing the PyGINV faultgeom columns::
-
-    width_km  depth_km  dip_deg  lat0  lon0  lat1  lon1  ss  ds  op
-
-Construction
-------------
-For row ``i`` (from the top of the fault downwards)::
-
-    dz_i    = z[i+1] - z[i]                      vertical extent (km)
-    theta_i = dip of row i                       (degrees from horizontal)
-    width_i = dz_i / sin(theta_i)                down-dip patch width (km)
-    dx_i    = dz_i / tan(theta_i)                horizontal step (km)
-
-Row ``i`` is attached to the previous one (the bottom edge of row ``i`` is the
-top edge of row ``i+1``), so the fault surface is continuous.  The down-dip
-direction is perpendicular to the local trace (to the *right* of the along
-strike direction A -> B by default; use ``--dip-side left`` to flip it).
-
-Depth range and patch width
----------------------------
-Two mutually exclusive ways to size the fault:
-
-* **Depth-controlled** (``--bottom-depth`` / ``--depth-nodes``): the top and
-  bottom depths are fixed, the dip gives the widths.
-* **Width-controlled** (``--mean-width`` and no bottom depth): every patch has
-  the given down-dip width and the bottom depth follows from the dips.
-
-If both ``--bottom-depth`` and ``--mean-width`` are given, the depth range is
-kept and the *absolute dip level* is adjusted (``--solve-dip``) so that the
-mean patch width equals ``--mean-width`` exactly.
-
-Dip profiles
-------------
-``t`` is the normalised position from the top (0) to the bottom (1) of the
-fault.  The dip varies from ``--top-dip`` at t=0 to ``--bottom-dip`` at t=1.
-Available shapes f(t) (all run from 0 at t=0 to 1 at t=1)::
-
-    linear      f = t
-    power       f = t**p                        (--power p)
-    exp         f = (1 - exp(-k t)) / (1 - exp(-k))       (--decay k)
-    log         f = log(1 + k t) / log(1 + k)             (--decay k)
-    logistic    f = normalised 1/(1+exp((t-t0)/s))        (--t0, --s)
-    sine        f = sin(pi t / 2)
-    cosine      f = (1 - cos(pi t)) / 2
-    smoothstep  f = t**2 (3 - 2 t)
-
-    dip(t) = top_dip + (bottom_dip - top_dip) * f(t)
-
-The profile is evaluated at the mid-depth of every row.  A single dip is
-given with ``--dip`` (or ``--top-dip = --bottom-dip``).  An
-explicit per-row list overrides everything: ``--dips 60,52,46,41,37,34``.
-
-Dip convention
---------------
-By default (``--dip-mode reverse``) the given ``(lat0, lon0)-(lat1, lon1)``
-edge is the **shallow** edge (the surface trace for row 0) and the dip column
-is written as ``180 + dip``.  This is the convention used by the existing
-Dingri faultgeom files.  ``--dip-mode angle`` writes the true angle (0-90) and
-the given edge is the deep edge instead.
-
-Important: PyGINV always puts the down-dip side to the **right** of the A -> B
-strike direction.  Therefore a west-dipping fault whose trace is stored from
-south to north must be written with the trace reversed; ``--dip-side left``
-does this automatically (``--dip-azimuth`` picks the side from an absolute
-azimuth).
-
-Examples
+Pipeline
 --------
-Single 49-degree dip, trace segmented into 33 patches, 13 rows to 25 km::
+1. Extrude the surface trace down dip exactly like trace2faultgeom.py does
+   (straight rays along the local surface normal).  This is the "preliminary"
+   geometry; on strongly curved traces its columns cross at depth.
+2. Extract the iso-depth contours (one polyline per depth level).
+3. Smooth along strike and resample: the default ``direction`` method smooths
+   the down-dip direction field, so the contours keep the along-strike shape
+   of the trace while the columns stop converging; ``nodes`` smooths the
+   contour coordinates directly (flattens bends more strongly).  The window
+   is increased until every quader is non-degenerate.
+4. Split the smoothed contours into quadrilateral subfaults.
 
-    ./trace2faultgeom.py --trace fault_trace.dat --nsegs 33 --ndeps 13 \\
-        --dip 49 --top-depth 0.9 --bottom-depth 25.4 \\
-        --output dingri_49.faultgeom
+Outputs
+-------
+``<base>_initial.faultgeom``   preliminary extrusion (PyGINV format)
+``<base>_contours.dat``        contours: level depth_km lon lat
+``<base>_quads.dat``           exact quad corners (+ strike/dip/width)
+``<base>_smoothed.faultgeom``  smoothed mesh in PyGINV faultgeom format
+``<base>_mesh.png/.pdf``       QC figure
+``<base>_profile.png/.pdf``    depth versus horizontal distance cross-section
+                               (true scale: 1 km is the same on both axes)
+``<base>_vertex.dat``/``<base>_element.dat``
+                               triangular mesh for TriSlipInversion.py
+                               (written with ``--tri``; every quad is split
+                               into two triangles)
 
-Listric fault: 60 deg at the surface, 32 deg at 18 km, exponential::
+Note: PyGINV faultgeom encodes each patch as the shallow edge plus a
+perpendicular width/dip offset, so a general quad is written as its
+best-fit parallelogram.  The script reports the resulting encoding error
+(checked by reloading the file with pyginvc.Geometry.Patch.Fault).
 
-    ./trace2faultgeom.py --trace fault_trace.dat --nsegs 33 --ndeps 13 \\
-        --top-dip 60 --bottom-dip 32 --profile exp --decay 4 \\
-        --top-depth 0 --bottom-depth 18 --dip-side left \\
-        --output dingri_listric.faultgeom
+All geometry arguments are required; meshing details (surface smoothing,
+contour smoothing, strike mode, dip profile) have built-in sensible
+defaults.  ``--strike-mode segment`` extrudes every patch along its own
+segment normal (the iso-depth contours may cross on a strongly curved
+trace).  ``--strike-mode mean`` (default) keeps the exact surface trace
+shape at every depth: each iso-depth contour is a translated copy, shifted
+along the normal to the mean strike by the cumulative ``dz/tan(dip)`` from
+the dip profile (a pure vertical shift when the dip is 90 deg), so no
+contours can cross and the deep fault has the same curved shape as the
+surface.  Dip profiles: ``linear``, ``exp`` / ``log`` (steep at the top,
+progressively gentler down dip; ``--profile-decay``), ``power``
+(f=t**--power: p<1 fast at top, p>1 fast at depth), and ``logistic``
+(sharp turnover at ``--profile-t0`` with width ``--profile-s``), plus
+``sine`` / ``cosine`` / ``smoothstep``.
 
-Uniform 2.5 km patches, dip solved from the mean width::
+Usage
+-----
+    python smooth_fault_mesh.py --trace GaoFen_Fault7.txt --nsegs 23 \
+        --ndeps 10 --top-depth 0 --bottom-depth 18 \
+        --top-dip 60 --bottom-dip 40 --profile exp \
+        --dip-azimuth 250 --output fault_mesh
 
-    ./trace2faultgeom.py --trace fault_trace.dat --nsegs 33 --ndeps 13 \\
-        --mean-width 2.5 --top-depth 0.9 --bottom-depth 25.4 \\
-        --solve-dip --output dingri_w25.faultgeom
+Optional: ``--strike-mode {mean,segment}`` (default mean), ``--profile
+{linear,exp,power,log,logistic,sine,cosine,smoothstep}`` (default linear),
+``--power`` / ``--profile-t0`` / ``--profile-s``, ``--smooth`` (trace smoothing window,
+default 10), ``--contour-method {direction,nodes}``, ``--contour-smooth-km``,
+``--tri`` (also write TriSlipInversion.py vertex/element files).  Sizing
+options for an independently re-meshed triangular grid are described below.
 
-Plotting: ``--plot`` saves the 2D QC figure; ``--plot3d`` saves a 3D patch
-view rendered by pyginvc's own ``Fault.plot_faultgeom`` (same look as
-``plot_faultgeom.py``), optionally with aftershocks and patch indices.
+Triangular mesh
+---------------
+With ``--tri`` the smoothed quad grid is triangulated (two triangles per
+quad, split along the shorter diagonal) and written in the format read by
+``pyginvc.Geometry.Triangle.load_fault``:
 
-Dependencies: numpy, pyproj (only for the local projection); matplotlib for
-``--plot``; pyginvc (pandas) for ``--plot3d``.
+    <base>_vertex.dat    idx lat lon depth_km   (depth positive downward)
+    <base>_element.dat   idx1 idx2 idx3 ss ds op (mm; initial slip = 0)
+
+For a mesh that is *not* tied to the quad grid, pass a target edge length
+(km).  The fault surface is then re-sampled on staggered depth rows: alternate
+rows are shifted by half a node and consecutive rows are ``L*sqrt(3)/2`` apart
+down dip, so the Delaunay triangulation in the (along-strike, down-dip)
+parameter plane consists of near-equilateral triangles with edge length ~L:
+
+    --tri-edge 1.5                     uniform target edge length
+    --tri-edge-top 1.0 --tri-edge-bottom 3.0
+                                       finer shallow, coarser deep
+    --tri-edge 2.0 --tri-edge-bottom 4.0
+                                       --tri-edge is the default for an
+                                       unspecified top/bottom value
+
+``--tri-grading {geometric,linear,smoothstep}`` controls how the size
+transitions from the shallow to the deep edge (default geometric, i.e. a
+constant ratio between neighbouring rows).  Sizing options imply ``--tri``.
+Graded meshes also write ``<base>_tri_mesh.png/.pdf`` (map view plus edge
+length versus depth) for QC.
+
+Point ``dict_fault.vertexfile``/``elementfile`` in the TriSlipInversion
+configuration at these two files.
 """
 
 import argparse
@@ -116,7 +108,7 @@ except ImportError:                                    # pragma: no cover
 
 
 # ---------------------------------------------------------------------------
-# small helpers
+# trace input / preparation
 # ---------------------------------------------------------------------------
 def angular_diff(a, b):
     """Signed smallest difference a - b wrapped into [-180, 180)."""
@@ -128,11 +120,6 @@ def mean_azimuth(east, north):
     az = np.degrees(np.arctan2(east, north))
     z = np.mean(np.exp(1j * np.radians(az)))
     return np.degrees(np.angle(z)) % 360.0
-
-
-def parse_floats(text):
-    return np.array([float(v) for v in text.replace(' ', '').split(',')
-                     if v != ''], dtype=float)
 
 
 class LocalProjection(object):
@@ -163,9 +150,6 @@ class LocalProjection(object):
         return np.asarray(lon), np.asarray(lat)
 
 
-# ---------------------------------------------------------------------------
-# trace input / preparation
-# ---------------------------------------------------------------------------
 def read_trace(filename, order='auto'):
     """Read a trace file.  Returns lat, lon, resolved column order."""
     data = np.loadtxt(filename)
@@ -289,741 +273,1062 @@ def dip_profile(t, top_dip, bottom_dip, mode, power, decay, t0, s):
     return top_dip + (bottom_dip - top_dip) * f
 
 
-def solve_dip_scale(base_dips, dz, target_mean):
-    """Scale dips in (90 - dip) space until the mean width is target_mean.
+# ---------------------------------------------------------------------------
+# geometry helpers
+# ---------------------------------------------------------------------------
+def build_surface(args):
+    """Smoothed, resampled surface trace in local (east, north) km.
 
-    dip_i(scale) = 90 - scale * (90 - base_dips_i).  scale=1 reproduces the
-    input profile; larger scale => gentler dips => wider patches.
+    ``--strike-mode`` 只影响深部几何（见 ``blend_mean_strike``），
+    地表迹线始终保留真实弯曲形状。
     """
-    base = np.asarray(base_dips, dtype=float)
-    dz = np.asarray(dz, dtype=float)
-
-    def mean_width(scale):
-        theta = np.radians(90.0 - scale * (90.0 - base))
-        if np.any(theta <= 0.0) or np.any(theta > np.pi / 2.0):
-            return np.inf
-        return np.mean(dz / np.sin(theta))
-
-    lo = 1.0e-8
-    if np.min(base) >= 90.0:
-        s_max = np.inf
-    else:
-        s_max = (90.0 - 1.0e-3) / (90.0 - np.min(base))
-    hi = 1.0
-    if np.isfinite(s_max):
-        hi = min(hi, s_max)
-    w_lo = mean_width(lo)
-    w_hi = mean_width(hi)
-    while w_hi < target_mean and np.isfinite(s_max) and hi < s_max:
-        hi = min(hi * 2.0, s_max)
-        w_hi = mean_width(hi)
-    if w_lo > target_mean:
-        raise ValueError(
-            "cannot reach mean width %.3f km: with this depth range the "
-            "smallest possible mean width is %.3f km"
-            % (target_mean, w_lo))
-    if w_hi < target_mean:
-        raise ValueError(
-            "cannot reach mean width %.3f km: with these dips the largest "
-            "reachable mean width is %.3f km" % (target_mean, w_hi))
-    for _ in range(200):
-        mid = 0.5 * (lo + hi)
-        if mean_width(mid) < target_mean:
-            lo = mid
-        else:
-            hi = mid
-        if hi - lo < 1.0e-12 * max(1.0, hi):
-            break
-    scale = 0.5 * (lo + hi)
-    return 90.0 - scale * (90.0 - base), scale
-
-
-# ---------------------------------------------------------------------------
-# main
-# ---------------------------------------------------------------------------
-def build_parser():
-    p = argparse.ArgumentParser(
-        description="Build a faultgeom file from a surface fault trace.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="See the module docstring for the construction and examples.")
-
-    p.add_argument('--trace', required=True,
-                   help='surface trace file, columns lon lat (or lat lon)')
-    p.add_argument('--output', default='trace.faultgeom',
-                   help='output faultgeom file (default: trace.faultgeom)')
-    p.add_argument('--order', choices=['auto', 'lonlat', 'latlon'],
-                   default='auto', help='trace column order (default: auto)')
-
-    # along strike
-    p.add_argument('--nsegs', type=int, default=0,
-                   help='number of patches along strike (default: trace '
-                        'vertices, i.e. one patch per input segment)')
-    p.add_argument('--seg-length', type=float, default=None,
-                   help='target patch length along strike (km); ignored when '
-                        '--nsegs is given')
-    p.add_argument('--smooth', type=int, default=0,
-                   help='moving-average window (vertices) for the trace; '
-                        '0 = no smoothing (default: 0)')
-
-    # along dip
-    p.add_argument('--ndeps', type=int, default=0,
-                   help='number of rows along dip (default: 10, or the length '
-                        'of --dips / --depth-nodes)')
-    p.add_argument('--top-depth', type=float, default=0.0,
-                   help='depth of the top of the fault (km, default: 0)')
-    p.add_argument('--bottom-depth', type=float, default=None,
-                   help='depth of the bottom of the fault (km); omit it to use '
-                        'width-controlled mode via --mean-width')
-    p.add_argument('--depth-nodes', type=str, default=None,
-                   help='explicit depth nodes (km, comma separated, strictly '
-                        'increasing); overrides --top-depth/--bottom-depth')
-    p.add_argument('--mean-width', type=float, default=None,
-                   help='mean down-dip width of a patch (km).  With a fixed '
-                        'depth range it is a target (see --solve-dip); without '
-                        'a bottom depth every patch gets exactly this width')
-    p.add_argument('--solve-dip', action='store_true',
-                   help='with a fixed depth range and --mean-width, rescale the '
-                        'dip profile so the mean width matches exactly')
-
-    # dip
-    p.add_argument('--dip', type=float, default=None,
-                   help='constant dip (degrees from horizontal)')
-    p.add_argument('--top-dip', type=float, default=None,
-                   help='dip at the top of the fault (degrees)')
-    p.add_argument('--bottom-dip', type=float, default=None,
-                   help='dip at the bottom of the fault (degrees)')
-    p.add_argument('--dips', type=str, default=None,
-                   help='explicit dip for every row, top to bottom, comma '
-                        'separated; overrides the profile')
-    p.add_argument('--profile', default='linear',
-                   choices=['linear', 'power', 'exp', 'log', 'logistic',
-                            'sine', 'cosine', 'smoothstep'],
-                   help='dip profile shape (default: linear)')
-    p.add_argument('--power', type=float, default=1.0,
-                   help='exponent of the power profile (default: 1.0)')
-    p.add_argument('--decay', '--k', dest='decay', type=float, default=1.0,
-                   help='decay parameter k of the exp/log profiles '
-                        '(default: 1.0)')
-    p.add_argument('--t0', type=float, default=0.5,
-                   help='logistic transition centre, normalised depth '
-                        '(default: 0.5)')
-    p.add_argument('--s', type=float, default=0.1,
-                   help='logistic transition width, normalised depth '
-                        '(default: 0.1)')
-
-    # orientation / convention
-    p.add_argument('--dip-side', choices=['right', 'left'], default='right',
-                   help='down-dip side relative to the A -> B trace order: '
-                        'right (default) or left.  PyGINV always dips to the '
-                        'right, so "left" reverses the written trace order.')
-    p.add_argument('--dip-azimuth', type=float, default=None,
-                   help='desired down-dip azimuth (degrees, clockwise from '
-                        'north); chooses --dip-side automatically')
-    p.add_argument('--dip-mode', choices=['reverse', 'angle'],
-                   default='reverse',
-                   help='reverse: given edge is the shallow edge and the dip '
-                        'column is 180+angle (default); angle: given edge is '
-                        'the deep edge and the dip column is the true angle')
-    p.add_argument('--flip-dip-direction', action='store_true',
-                   help='alias for --dip-side left')
-
-    # slip / output
-    p.add_argument('--ss', type=float, default=0.0,
-                   help='constant strike-slip value written to every row (mm)')
-    p.add_argument('--ds', type=float, default=0.0,
-                   help='constant dip-slip value written to every row (mm)')
-    p.add_argument('--op', type=float, default=0.0,
-                   help='constant opening value written to every row (mm)')
-    p.add_argument('--no-header', action='store_true',
-                   help='do not write the leading comment header')
-    p.add_argument('--plot', nargs='?', const='', default=None,
-                   help='save a 2D QC figure (default name: '
-                        'trace2faultgeom.png)')
-    p.add_argument('--plot-column', type=int, default=0,
-                   help='along-strike column used for the cross-section '
-                        '(default: 0)')
-
-    # ---- 3D patch view (in the spirit of plot_faultgeom.py) -------------
-    p.add_argument('--plot3d', nargs='?', const='', default=None,
-                   help='save a 3D patch view like plot_faultgeom.py '
-                        '(default name: <output>_3d.png)')
-    p.add_argument('--color-by', choices=['depth', 'dip', 'width', 'slip'],
-                   default='depth',
-                   help='quantity used to colour the patches (default: depth)')
-    p.add_argument('--view-azimuth', type=float, default=-40.0,
-                   help='3D view azimuth (degrees, default: -40)')
-    p.add_argument('--view-elevation', type=float, default=30.0,
-                   help='3D view elevation (degrees, default: 30)')
-    p.add_argument('--show-index', action='store_true',
-                   help='label every patch with its index in the 3D view')
-    p.add_argument('--aftershock', type=str, default='',
-                   help='optional aftershock catalog (lon lat depth_km) '
-                        'overlaid on the 3D view')
-    p.add_argument('--plot3d-show', action='store_true',
-                   help='open an interactive window in addition to saving')
-    return p
-
-
-def resolve_arguments(args):
-    """Apply defaults, validate combinations and return a settings dict."""
-    # ---- dip levels -----------------------------------------------------
-    explicit_dips = None
-    if args.dips:
-        explicit_dips = parse_floats(args.dips)
-        if np.any(explicit_dips <= 0.0) or np.any(explicit_dips > 90.0):
-            raise ValueError("--dips must satisfy 0 < dip <= 90")
-        if (args.dip is not None or args.top_dip is not None or
-                args.bottom_dip is not None):
-            print("NOTE: --dips overrides --dip/--top-dip/--bottom-dip.",
-                  file=sys.stderr)
-
-    if args.dip is not None:
-        if args.top_dip is not None or args.bottom_dip is not None:
-            raise ValueError("use either --dip or --top-dip/--bottom-dip, "
-                             "not both")
-        if explicit_dips is None:
-            if not (0.0 < args.dip <= 90.0):
-                raise ValueError("--dip must satisfy 0 < dip <= 90")
-
-    elif explicit_dips is None:
-        if (args.top_dip is None) != (args.bottom_dip is None):
-            raise ValueError("--top-dip and --bottom-dip must be given "
-                             "together")
-        if args.top_dip is not None:
-            if not (0.0 < args.top_dip <= 90.0 and
-                    0.0 < args.bottom_dip <= 90.0):
-                raise ValueError("dips must satisfy 0 < dip <= 90")
-
-    # ---- number of rows -------------------------------------------------
-    candidates = []
-    if args.ndeps:
-        candidates.append(('--ndeps', args.ndeps))
-    if explicit_dips is not None:
-        candidates.append(('--dips', len(explicit_dips)))
-    if args.depth_nodes:
-        nodes_tmp = parse_floats(args.depth_nodes)
-        if len(nodes_tmp) < 2:
-            raise ValueError("--depth-nodes needs at least two values")
-        if np.any(np.diff(nodes_tmp) <= 0.0):
-            raise ValueError("--depth-nodes must be strictly increasing")
-        candidates.append(('--depth-nodes', len(nodes_tmp) - 1))
-    if len({n for _, n in candidates}) > 1:
-        raise ValueError("conflicting row counts: %s"
-                         % ', '.join('%s=%d' % c for c in candidates))
-    n_out = candidates[0][1] if candidates else 10
-    if n_out < 1:
-        raise ValueError("need at least one row along dip")
-    if n_out > 1000:
-        raise ValueError("more than 1000 rows along dip is not supported")
-
-    # ---- depth mode vs width mode --------------------------------------
-    explicit_depth = args.depth_nodes is not None or \
-        args.bottom_depth is not None
-    width_mode = (not explicit_depth) and (args.mean_width is not None)
-    if not explicit_depth and args.mean_width is None:
-        raise ValueError(
-            "give a depth range (--bottom-depth or --depth-nodes) or a patch "
-            "width (--mean-width)")
-    if width_mode and args.solve_dip:
-        raise ValueError("--solve-dip needs a fixed depth range; give "
-                         "--bottom-depth")
-    if args.solve_dip and args.mean_width is None:
-        raise ValueError("--solve-dip needs --mean-width")
-    if args.mean_width is not None and args.mean_width <= 0.0:
-        raise ValueError("--mean-width must be > 0")
-
-    # ---- depth nodes ----------------------------------------------------
-    if args.depth_nodes:
-        z_nodes = parse_floats(args.depth_nodes)
-        z_top, z_bot = float(z_nodes[0]), float(z_nodes[-1])
-        if args.top_depth != 0.0 and abs(args.top_depth - z_top) > 1.0e-6:
-            print("NOTE: --top-depth overridden by --depth-nodes.",
-                  file=sys.stderr)
-    elif explicit_depth:
-        z_top = float(args.top_depth)
-        z_bot = float(args.bottom_depth)
-        if z_bot <= z_top:
-            raise ValueError("--bottom-depth (%.3f) must be larger than the "
-                             "top depth (%.3f)" % (z_bot, z_top))
-        z_nodes = np.linspace(z_top, z_bot, n_out + 1)
-    else:
-        z_top = float(args.top_depth)
-        z_nodes = None
-        z_bot = None
-
-    # ---- nominal dips (before any width solving) ------------------------
-    dips = None
-    if explicit_dips is not None:
-        dips = explicit_dips.copy()
-    elif args.dip is not None:
-        dips = np.full(n_out, float(args.dip))
-    elif args.top_dip is not None:
-        if width_mode:
-            t = (np.arange(n_out) + 0.5) / n_out
-        else:
-            t = (0.5 * (z_nodes[:-1] + z_nodes[1:]) - z_top) / (z_bot - z_top)
-        dips = dip_profile(t, float(args.top_dip), float(args.bottom_dip),
-                           args.profile, args.power, args.decay, args.t0,
-                           args.s)
-    elif not width_mode and args.mean_width is not None:
-        # constant dip solved from the depth range and the mean width
-        if args.profile != 'linear':
-            raise ValueError(
-                "a dip profile needs --top-dip and --bottom-dip; with only "
-                "--mean-width a constant dip is solved")
-        sin_dip = (z_bot - z_top) / (n_out * args.mean_width)
-        if sin_dip > 1.0:
-            raise ValueError(
-                "mean width %.3f km is too small for a depth range of %.3f km "
-                "and %d rows: the minimum mean width is %.3f km"
-                % (args.mean_width, z_bot - z_top, n_out,
-                   (z_bot - z_top) / n_out))
-        theta = np.degrees(np.arcsin(sin_dip))
-        dips = np.full(n_out, theta)
-        print("NOTE: constant dip solved from depth range and mean width: "
-              "%.4f deg" % theta, file=sys.stderr)
-    else:
-        raise ValueError(
-            "no dip given: use --dip, --top-dip/--bottom-dip, --dips, or "
-            "give --mean-width with a depth range for a constant dip")
-
-    # ---- widths / depths ------------------------------------------------
-    solve_scale = 1.0
-    if width_mode:
-        if dips is None:
-            raise ValueError("width-controlled mode needs --dip or "
-                             "--top-dip/--bottom-dip")
-        widths = np.full(n_out, float(args.mean_width))
-        z_nodes = z_top + np.r_[0.0, np.cumsum(
-            widths * np.sin(np.radians(dips)))]
-        z_bot = float(z_nodes[-1])
-        dz = np.diff(z_nodes)
-    else:
-        dz = np.diff(z_nodes)
-        if args.mean_width is not None and args.solve_dip:
-            if explicit_dips is not None or args.dip is not None:
-                raise ValueError("--solve-dip needs a dip profile; it cannot "
-                                 "rescale an explicit --dip / --dips")
-            dips, solve_scale = solve_dip_scale(
-                dips, dz, float(args.mean_width))
-            print("NOTE: dip profile rescaled by %.6f in (90-dip) space to hit "
-                  "the requested mean width." % solve_scale,
-                  file=sys.stderr)
-        widths = dz / np.sin(np.radians(dips))
-        if args.mean_width is not None:
-            achieved = float(np.mean(widths))
-            rel = abs(achieved - args.mean_width) / args.mean_width
-            if rel > 1.0e-3:
-                print("WARNING: mean patch width is %.4f km, requested %.4f km "
-                      "(%.2f%% off).  Use --solve-dip to scale the dip "
-                      "profile." % (achieved, args.mean_width, 100.0 * rel),
-                      file=sys.stderr)
-
-    if np.any(dips <= 0.0) or np.any(dips > 90.0):
-        raise ValueError("dip values must satisfy 0 < dip <= 90 degrees")
-    if np.any(widths <= 0.0):
-        raise ValueError("computed non-positive patch widths")
-
-    return dict(n_out=n_out, z_nodes=np.asarray(z_nodes, dtype=float),
-                z_top=z_top, z_bot=z_bot, dz=np.asarray(dz, dtype=float),
-                dips=np.asarray(dips, dtype=float),
-                widths=np.asarray(widths, dtype=float),
-                width_mode=width_mode, solve_scale=solve_scale,
-                explicit_dips=explicit_dips is not None)
-
-
-def build_geometry(args, cfg):
-    """Create the output faultgeom array together with QC information."""
-    lat, lon, _ = read_trace(args.trace, args.order)
+    lat, lon, _ = read_trace(args.trace, 'auto')
     proj = LocalProjection(np.mean(lat), np.mean(lon))
     x, y = proj.to_xy(lon, lat)
     x, y = smooth_xy(x, y, args.smooth)
+    xn, yn, total = resample_nodes(x, y, args.nsegs)
 
-    # ---- along-strike segmentation -------------------------------------
-    if args.nsegs:
-        nsegs = int(args.nsegs)
-        if nsegs < 1:
-            raise ValueError("--nsegs must be >= 1")
-        xn, yn, total_len = resample_nodes(x, y, nsegs)
-    elif args.seg_length is not None:
-        total_len = float(np.sum(np.hypot(np.diff(x), np.diff(y))))
-        nsegs = max(1, int(round(total_len / args.seg_length)))
-        xn, yn, total_len = resample_nodes(x, y, nsegs)
-        print("NOTE: --seg-length %.3f km -> %d segments (%.3f km each)."
-              % (args.seg_length, nsegs, total_len / nsegs), file=sys.stderr)
-    else:
-        xn, yn = x, y
-        nsegs = len(xn) - 1
-        total_len = float(np.sum(np.hypot(np.diff(xn), np.diff(yn))))
-
-    # ---- choose the down-dip side --------------------------------------
     az0 = mean_azimuth(np.diff(xn), np.diff(yn))
-    reverse = (args.dip_side == 'left') or args.flip_dip_direction
-    chosen_az = None
-    if args.dip_azimuth is not None:
-        d_right = abs(angular_diff((az0 + 90.0) % 360.0, args.dip_azimuth))
-        d_left = abs(angular_diff((az0 - 90.0) % 360.0, args.dip_azimuth))
-        reverse = d_left < d_right
-        chosen_az = (az0 - 90.0) % 360.0 if reverse else (az0 + 90.0) % 360.0
-        if min(d_right, d_left) > 45.0:
-            print("WARNING: the trace is not perpendicular to the requested "
-                  "dip azimuth (best mismatch %.1f deg); the down-dip "
-                  "direction follows the local trace." % min(d_right, d_left),
-                  file=sys.stderr)
+    d_right = abs(angular_diff((az0 + 90.0) % 360.0, args.dip_azimuth))
+    d_left = abs(angular_diff((az0 - 90.0) % 360.0, args.dip_azimuth))
+    reverse = d_left < d_right
     if reverse:
-        xn = xn[::-1].copy()
-        yn = yn[::-1].copy()
+        xn, yn = xn[::-1].copy(), yn[::-1].copy()
+        az0 = (az0 + 180.0) % 360.0
 
     A = np.column_stack([xn[:-1], yn[:-1]])
     B = np.column_stack([xn[1:], yn[1:]])
     seg = B - A
-    slen = np.hypot(seg[:, 0], seg[:, 1])
-    if np.any(slen <= 1.0e-9):
-        raise ValueError("degenerate segment along strike after resampling")
-    tvec = seg / slen[:, None]
-    # down-dip unit vector: rotate the along-strike vector clockwise by 90 deg
-    uvec = np.column_stack([tvec[:, 1], -tvec[:, 0]])
-    strikes = np.degrees(np.arctan2(tvec[:, 0], tvec[:, 1])) % 360.0
-    dip_az = np.degrees(np.arctan2(uvec[:, 0], uvec[:, 1])) % 360.0
+    tvec = seg / np.hypot(seg[:, 0], seg[:, 1])[:, None]
+    uvec = np.column_stack([tvec[:, 1], -tvec[:, 0]])   # right normal
+    return proj, A, B, uvec, total, az0, reverse
 
-    # ---- rows along dip ------------------------------------------------
-    n_out = cfg['n_out']
-    dips = cfg['dips']
-    widths = cfg['widths']
-    z_nodes = cfg['z_nodes']
-    dz = cfg['dz']
-    reverse_dip = (args.dip_mode == 'reverse')
 
-    out = np.zeros((n_out * nsegs, 10))
-    top_xy = A.copy()
-    rows_xy = []                      # top edge of every row, for QC
-    for i in range(n_out):
-        hstep = dz[i] / np.tan(np.radians(dips[i]))
-        if reverse_dip:
-            write_xy = top_xy.copy()
-            depth_col = z_nodes[i]
-            dip_col = 180.0 + dips[i]
+def build_mean_strike_mesh(A, B, z, dips, az_mean, dip_azimuth):
+    """按平均走向把地表迹线整体拷贝到各深度层。
+
+    返回 (C, cum, u)：
+        C   = (nlev, nnode, 2)，每层都是地表迹线的纯平移副本——形状和
+              总长度与地表完全相同，不会随深度扩散；
+        cum = 各层的累计水平位移 (km)；
+        u   = 平移方向（平均走向的法向，指向下倾侧）。
+
+    水平位移 cum = cumsum(dz / tan(dip))，垂向就是深度 z 本身；
+    倾角 90 deg 时水平位移为 0，即纯垂直拷贝。
+    """
+    C0 = np.vstack([A, B[-1][None, :]])            # 地表迹线节点
+    t = np.array([np.sin(np.radians(az_mean)), np.cos(np.radians(az_mean))])
+    u = np.array([t[1], -t[0]])                    # 平均走向的右法向
+    az_u = np.degrees(np.arctan2(u[0], u[1])) % 360.0
+    if abs(angular_diff(az_u, dip_azimuth)) > 90.0:
+        u = -u
+    cum = np.r_[0.0, np.cumsum(np.diff(z) / np.tan(np.radians(dips)))]
+    C = C0[None, :, :] + cum[:, None, None] * u[None, None, :]
+    return C, cum, u
+
+
+def depth_levels(args):
+    """Depth nodes and the dip of every row (same convention as trace2faultgeom)."""
+    z = np.linspace(args.top_depth, args.bottom_depth, args.ndeps + 1)
+    t = (0.5 * (z[:-1] + z[1:]) - args.top_depth) / (args.bottom_depth -
+                                                     args.top_depth)
+    dips = dip_profile(t, args.top_dip, args.bottom_dip, args.profile,
+                       args.power, args.profile_decay,
+                       args.profile_t0, args.profile_s)
+    return z, dips
+
+
+def initial_contours(A, B, uvec, z, dips):
+    """Straight-ray extrusion: contour i is the top edge of row i."""
+    dz = np.diff(z)
+    hstep = dz / np.tan(np.radians(dips))
+    cum = np.r_[0.0, np.cumsum(hstep)]
+    n = len(A)
+    C = np.empty((len(cum), n + 1, 2))
+    for i, c in enumerate(cum):
+        C[i, :n] = A + c * uvec
+        C[i, n] = B[-1] + c * uvec[-1]
+    return C, cum
+
+
+def cell_area(C):
+    """Plan-view signed area of every quad (rows = depth, cols = strike)."""
+    A = C[:-1, :-1]
+    B = C[:-1, 1:]
+    E = C[1:, 1:]
+    D = C[1:, :-1]
+
+    def cross(p, q):
+        return p[..., 0] * q[..., 1] - p[..., 1] * q[..., 0]
+
+    return 0.5 * (cross(A, B) + cross(B, E) + cross(E, D) + cross(D, A))
+
+
+def cell_validity(C, rel_area=0.02):
+    area = cell_area(C)
+    ref = np.median(np.abs(area[0]))
+    sign = np.sign(np.median(area))
+    bad = (area * sign <= rel_area * ref)
+    return area, bad
+
+
+def smooth_levels(C, window):
+    """Smooth contours 1..end along strike and resample them evenly."""
+    Cs = C.copy()
+    for i in range(1, C.shape[0]):
+        xs, ys = smooth_xy(C[i, :, 0], C[i, :, 1], window)
+        xs, ys, _ = resample_nodes(xs, ys, C.shape[1] - 1)
+        Cs[i, :, 0] = xs
+        Cs[i, :, 1] = ys
+    return Cs
+
+
+def smooth_vectors(v, window):
+    """Moving average of a unit-vector field along strike, renormalised."""
+    if window <= 1:
+        return v
+    if window % 2 == 0:
+        window += 1
+    half = window // 2
+    vp = np.vstack([np.repeat(v[0][None, :], half, 0), v,
+                    np.repeat(v[-1][None, :], half, 0)])
+    k = np.ones(window) / float(window)
+    vs = np.column_stack([np.convolve(vp[:, 0], k, 'valid'),
+                          np.convolve(vp[:, 1], k, 'valid')])
+    return vs / np.hypot(vs[:, 0], vs[:, 1])[:, None]
+
+
+def direction_contours(nodes, uvec, cum, window):
+    """Contours from a smoothed down-dip direction field.
+
+    Every column is a straight ray, but the ray direction is the *smoothed*
+    surface normal.  Compared with smoothing the contour coordinates this
+    keeps the along-strike shape (bends are not flattened) while still
+    preventing the columns from crossing.
+    """
+    un = np.vstack([uvec[0], 0.5 * (uvec[:-1] + uvec[1:]), uvec[-1]])
+    un /= np.hypot(un[:, 0], un[:, 1])[:, None]
+    un = smooth_vectors(un, window)
+    C = np.empty((len(cum), len(nodes), 2))
+    for i, c in enumerate(cum):
+        C[i] = nodes + c * un
+    return C
+
+
+def choose_smoothing(C, w0, wmax):
+    """Window giving the fewest degenerate cells (ties -> smaller window).
+
+    Strong along-strike smoothing can fold a contour, so a larger window is
+    not always better; all windows from ``w0`` to ``wmax`` are tested and the
+    best one is used.
+    """
+    best = None
+    window = max(1, int(w0))
+    while window <= max(1, int(wmax)):
+        Cs = smooth_levels(C, window)
+        area, bad = cell_validity(Cs)
+        score = mesh_score(Cs, bad)
+        if best is None or score < best[0]:
+            best = (score, window, Cs, area, bad)
+        if score == 0:
+            break
+        window += 2
+    score, window, Cs, area, bad = best
+    if score:
+        print('WARNING: even the best smoothing window (%d) leaves %d '
+              'problem cells.' % (window, score))
+    return Cs, window, area, bad
+
+
+def mesh_score(C, bad=None, ratio=0.5):
+    """Degenerate quads plus columns squeezed below ``ratio`` of surface spacing."""
+    if bad is None:
+        _, bad = cell_validity(C)
+    d = np.hypot(np.diff(C[:, :, 0], axis=1), np.diff(C[:, :, 1], axis=1))
+    ref = np.median(d[0])
+    squeezed = int(np.sum(d[1:] < ratio * ref))
+    return int(bad.sum()) + squeezed
+
+
+def choose_direction(nodes, uvec, cum, w0, wmax):
+    """Choose the direction-field smoothing window (direction method)."""
+    best = None
+    window = max(1, int(w0))
+    while window <= max(1, int(wmax)):
+        C = direction_contours(nodes, uvec, cum, window)
+        area, bad = cell_validity(C)
+        score = mesh_score(C, bad)
+        if best is None or score < best[0]:
+            best = (score, window, C, area, bad)
+        if score == 0:
+            break
+        window += 2
+    score, window, C, area, bad = best
+    if score:
+        print('WARNING: even the best direction window (%d) leaves %d '
+              'problem cells.' % (window, score))
+    return C, window, area, bad
+
+
+def patches(C, z):
+    """Quad corner table and per-patch best-fit (strike, dip, width)."""
+    nlev, nnode = C.shape[0], C.shape[1]
+    dz = np.diff(z)
+    rows = []
+    for i in range(nlev - 1):
+        for j in range(nnode - 1):
+            p00 = C[i, j]
+            p01 = C[i, j + 1]
+            p10 = C[i + 1, j]
+            p11 = C[i + 1, j + 1]
+            top = p01 - p00
+            slen = np.hypot(*top)
+            nrm = np.array([top[1], -top[0]]) / max(slen, 1e-12)  # right normal
+            w1 = np.dot(p10 - p00, nrm)
+            w2 = np.dot(p11 - p01, nrm)
+            wperp = 0.5 * (w1 + w2)
+            width = np.hypot(wperp, dz[i])
+            dip = np.degrees(np.arctan2(dz[i], wperp))
+            strike = np.degrees(np.arctan2(top[0], top[1])) % 360.0
+            rows.append(dict(i=i, j=j, p00=p00, p01=p01, p11=p11, p10=p10,
+                             strike=strike, dip=dip, width=width,
+                             wperp=wperp))
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# writers
+# ---------------------------------------------------------------------------
+GEOM_FMT = ' '.join(['%12.4f'] * 3 + ['%15.6f'] * 4 + ['%15.3f'] * 3)
+
+
+def write_faultgeom(path, rows, proj, header):
+    nlev = max(r['i'] for r in rows) + 1
+    nseg = max(r['j'] for r in rows) + 1
+    with open(path, 'w') as fid:
+        for line in header:
+            fid.write('# ' + line + '\n')
+        for i in range(nlev):
+            for j in range(nseg):
+                r = rows[i * nseg + j]
+                lo0, la0 = proj.to_ll(r['p00'][0], r['p00'][1])
+                lo1, la1 = proj.to_ll(r['p01'][0], r['p01'][1])
+                vals = [r['width'], r['depth'], 180.0 + r['dip'],
+                        la0, lo0, la1, lo1, 0.0, 0.0, 0.0]
+                fid.write((GEOM_FMT % tuple(vals)) + '\n')
+
+
+def write_contours(path, C, z, proj, nsegs):
+    with open(path, 'w') as fid:
+        fid.write('# level depth_km lon lat\n')
+        for i in range(C.shape[0]):
+            for j in range(C.shape[1]):
+                lo, la = proj.to_ll(C[i, j, 0], C[i, j, 1])
+                fid.write('%3d %8.3f %12.7f %11.7f\n' % (i, z[i], lo, la))
+
+
+def write_quads(path, rows, z, proj):
+    with open(path, 'w') as fid:
+        fid.write('# i j depth_top_km '
+                  'lon00 lat00 lon01 lat01 lon11 lat11 lon10 lat10 '
+                  'strike_deg dip_deg width_km\n')
+        for r in rows:
+            lo00, la00 = proj.to_ll(r['p00'][0], r['p00'][1])
+            lo01, la01 = proj.to_ll(r['p01'][0], r['p01'][1])
+            lo11, la11 = proj.to_ll(r['p11'][0], r['p11'][1])
+            lo10, la10 = proj.to_ll(r['p10'][0], r['p10'][1])
+            lines = ('%3d %3d %8.3f  %12.7f %11.7f  %12.7f %11.7f  '
+                     '%12.7f %11.7f  %12.7f %11.7f  %8.2f %7.2f %7.3f\n')
+            fid.write(lines % (r['i'], r['j'], z[r['i']],
+                               lo00, la00, lo01, la01, lo11, la11,
+                               lo10, la10, r['strike'], r['dip'],
+                               r['width']))
+
+
+def write_triangles(base, C, z, proj):
+    """将四边形网格剖分为三角元，输出 TriSlipInversion.py 可读取的文件。
+
+    C = (nlev, nnode, 2) 的局部 (east, north) km 网格节点（即平滑后的
+    iso-depth 等高线）。每个四边形沿较短的横对角线分成两个三角形。
+
+    输出：
+        <base>_vertex.dat    idx lat lon depth_km（深度向下为正）
+        <base>_element.dat   idx1 idx2 idx3 ss ds op（mm，初始滑动为 0）
+
+    三角形顶点按 (v2-v1) x (v3-v1) 的 z 分量为正排列，与
+    pyginvc.Geometry.Triangle.load_fault 强制采用的环流方向一致，
+    载入时不会被翻转，滑动分量的符号约定因此保持一致。
+    """
+    nlev, nnode = C.shape[0], C.shape[1]
+
+    def vid(i, j):
+        return 1 + i * nnode + j
+
+    tris = []
+    for i in range(nlev - 1):
+        for j in range(nnode - 1):
+            v00, v01, v10, v11 = (i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)
+            # split along the shorter diagonal to keep triangles well shaped
+            if (np.hypot(*(C[v01] - C[v10]))
+                    < np.hypot(*(C[v00] - C[v11]))):
+                cells = ((v01, v11, v10), (v01, v10, v00))
+            else:
+                cells = ((v00, v01, v11), (v00, v11, v10))
+            for a, b, c in cells:
+                p1, p2, p3 = C[a], C[b], C[c]
+                cross_z = ((p2[0] - p1[0]) * (p3[1] - p1[1])
+                           - (p2[1] - p1[1]) * (p3[0] - p1[0]))
+                if cross_z < 0.0:              # normal must point downward
+                    b, c = c, b
+                tris.append((vid(*a), vid(*b), vid(*c)))
+
+    with open(base + '_vertex.dat', 'w') as fid:
+        fid.write('# idx lat lon depth_km (depth positive downward)\n')
+        for i in range(nlev):
+            for j in range(nnode):
+                lo, la = proj.to_ll(C[i, j, 0], C[i, j, 1])
+                fid.write('%6d %13.7f %13.7f %10.4f\n'
+                          % (vid(i, j), la, lo, z[i]))
+
+    with open(base + '_element.dat', 'w') as fid:
+        fid.write('# idx1 idx2 idx3 slip_ss_mm slip_ds_mm slip_ts_mm\n')
+        for v1, v2, v3 in tris:
+            fid.write('%6d %6d %6d %14.4f %14.4f %14.4f\n'
+                      % (v1, v2, v3, 0.0, 0.0, 0.0))
+    return len(tris)
+
+
+# ---------------------------------------------------------------------------
+# graded triangular mesh (independent of the quad grid)
+# ---------------------------------------------------------------------------
+def contour_lengths(C):
+    """Along-strike length of every depth contour (km)."""
+    d = np.hypot(np.diff(C[:, :, 0], axis=1), np.diff(C[:, :, 1], axis=1))
+    return d.sum(axis=1)
+
+
+def contour_point(Ci, s):
+    """Position on one contour at fractional arc length ``s`` in [0, 1]."""
+    d = np.hypot(np.diff(Ci[:, 0]), np.diff(Ci[:, 1]))
+    cum = np.r_[0.0, np.cumsum(d)]
+    total = cum[-1]
+    if total <= 0.0:
+        raise ValueError('zero-length contour; cannot build a mesh')
+    sn = np.clip(np.asarray(s, dtype=float), 0.0, 1.0) * total
+    return np.interp(sn, cum, Ci[:, 0]), np.interp(sn, cum, Ci[:, 1])
+
+
+def surface_point(C, zlev, zq, s):
+    """Local (east, north) on the fault surface at depth ``zq``.
+
+    ``s`` is the fractional arc length along the nearest depth contours.
+    Horizontal positions are interpolated linearly between the two bounding
+    contours at the same strike fraction.
+    """
+    nlev = C.shape[0]
+    if nlev < 2:
+        raise ValueError('need at least two depth contours')
+    # fractional level index at this depth (works for non-uniform levels too)
+    f = float(np.interp(zq, zlev, np.arange(nlev)))
+    i = min(int(np.floor(f)), nlev - 2)
+    a = f - i
+    x0, y0 = contour_point(C[i], s)
+    x1, y1 = contour_point(C[i + 1], s)
+    return (1.0 - a) * x0 + a * x1, (1.0 - a) * y0 + a * y1
+
+
+def edge_size_profile(zq, z0, z1, l_top, l_bottom, grading):
+    """Target 3-D edge length (km) at depth ``zq``."""
+    u = float(np.clip((zq - z0) / max(z1 - z0, 1e-12), 0.0, 1.0))
+    if grading == 'linear':
+        f = u
+    elif grading == 'smoothstep':
+        f = u * u * (3.0 - 2.0 * u)
+    elif grading == 'geometric':
+        return float(np.exp(np.log(l_top) * (1.0 - u)
+                            + np.log(l_bottom) * u))
+    else:
+        raise ValueError('unknown tri grading: %s' % grading)
+    return l_top + (l_bottom - l_top) * f
+
+
+def graded_depth_rows(z0, z1, step_at, dip_at, max_rows=200000):
+    """Depth rows whose down-dip 3-D spacing follows ``step_at``.
+
+    ``step_at(z)`` is the desired slant distance between neighbouring rows
+    (km).  A dip ``theta`` gives ds = dz / sin(theta), so dz = step sin(theta).
+    """
+    rows = [float(z0)]
+    while rows[-1] < z1 - 1e-9:
+        zc = rows[-1]
+        if z1 - zc < 1e-6:              # avoid a numerically zero last row
+            rows[-1] = float(z1)
+            break
+        # fixed-point iteration for the vertical step; using the dip at the
+        # midpoint keeps the 3-D spacing close to the target when dip varies
+        dz = float(step_at(zc)) * np.sin(np.radians(float(dip_at(zc))))
+        for _ in range(2):
+            zm = zc + 0.5 * dz
+            dz = float(step_at(zm)) * np.sin(
+                np.radians(float(dip_at(zm))))
+        if not np.isfinite(dz) or dz <= 1e-9:
+            raise ValueError('cannot advance down dip at depth %.3f km' % zc)
+
+        remaining = z1 - zc
+        if remaining <= 1.25 * dz:
+            rows.append(float(z1))               # accept up to 25% oversize
+        elif remaining < 2.0 * dz:
+            # split the last two rows evenly instead of leaving a tiny sliver
+            rows.append(zc + 0.5 * remaining)
+            rows.append(float(z1))
         else:
-            write_xy = top_xy + uvec * hstep
-            depth_col = z_nodes[i + 1]
-            dip_col = dips[i]
-
-        pts = np.vstack([write_xy, write_xy + B - A])
-        plon, plat = proj.to_ll(pts[:, 0], pts[:, 1])
-        la = plat[:nsegs]
-        lb = plat[nsegs:]
-        lo = plon[:nsegs]
-        lob = plon[nsegs:]
-
-        block = out[i * nsegs:(i + 1) * nsegs]
-        block[:, 0] = widths[i]
-        block[:, 1] = depth_col
-        block[:, 2] = dip_col
-        block[:, 3] = la
-        block[:, 4] = lo
-        block[:, 5] = lb
-        block[:, 6] = lob
-        block[:, 7] = args.ss
-        block[:, 8] = args.ds
-        block[:, 9] = args.op
-
-        rows_xy.append(write_xy.copy())
-        top_xy = top_xy + uvec * hstep
-
-    qc = dict(proj=proj, A=A, B=B, uvec=uvec, strikes=strikes, dip_az=dip_az,
-              nsegs=nsegs, total_len=total_len, rows_xy=rows_xy,
-              reverse_dip=reverse_dip, az0=az0, reverse=reverse,
-              chosen_az=chosen_az)
-    return out, cfg, qc
+            rows.append(min(zc + dz, z1))
+        if len(rows) > max_rows:
+            raise ValueError(
+                'graded mesh needs more than %d depth rows; use a larger '
+                'edge length' % max_rows)
+    if len(rows) == 1:
+        rows.append(float(z1))
+    return np.array(rows)
 
 
-def write_output(args, cfg, out, qc):
-    n_out = cfg['n_out']
-    nsegs = qc['nsegs']
-    dips = cfg['dips']
-    widths = cfg['widths']
-    z_nodes = cfg['z_nodes']
+def build_graded_triangles(C, z, dips, l_top, l_bottom, grading,
+                           max_vertices=2000000):
+    """Delaunay triangulation of the fault surface with a target edge size.
 
-    fmt = ' '.join(['%12.4f'] * 3 + ['%15.6f'] * 4 + ['%15.3f'] * 3)
-    if args.dip_mode == 'reverse':
-        mode_txt = 'trace is the shallow edge; dip column = 180 + angle'
-    else:
-        mode_txt = 'trace is the deep edge; dip column = true angle'
-    header = [
-        "faultgeom built from a surface trace by trace2faultgeom.py",
-        "trace      : %s (%d patches along strike)" % (args.trace, nsegs),
-        "grid       : nsegs=%d ndeps=%d" % (nsegs, n_out),
-        "sizing     : %s" % ('width-controlled (uniform %.4f km patches)'
-                             % np.mean(widths) if cfg['width_mode'] else
-                             'depth-controlled'),
-        "depth      : top=%.4f km bottom=%.4f km"
-        % (z_nodes[0], z_nodes[-1]),
-        "dip        : %.4f - %.4f deg (mean %.4f deg)"
-        % (np.min(dips), np.max(dips), np.mean(dips)),
-        "width      : %.4f - %.4f km (mean %.4f km, total %.4f km)"
-        % (np.min(widths), np.max(widths), np.mean(widths),
-           np.sum(widths)),
-        "dip dir    : %.2f - %.2f deg (clockwise from north)"
-        % (np.min(qc['dip_az']), np.max(qc['dip_az'])),
-        "convention : %s" % mode_txt,
-        "width_km depth_km dip_deg lat0_deg lon0_deg lat1_deg lon1_deg "
-        "slp_strk_mm slp_ddip_mm slp_tens_mm",
-    ]
-    with open(args.output, 'w') as fid:
-        if not args.no_header:
-            for line in header:
-                fid.write("# " + line + "\n")
-        np.savetxt(fid, out, fmt=fmt)
-    return header
+    Points are placed on staggered depth rows, i.e. a triangular lattice whose
+    nodal spacing is the target edge length ``L``.  Consecutive rows are
+    separated down dip by ``L * sqrt(3) / 2`` and alternate rows are shifted
+    by half a node, so the Delaunay triangles are close to equilateral.  The
+    triangulation is computed in the (along-strike, down-dip) parameter plane,
+    whose boundary is a rectangle, and mapped back to local coordinates.  This
+    gives an isotropic mesh that is not constrained by the quad grid.
+
+    Returns ``(xy, z, tris, rows, row_counts, edge_lengths, edge_mid_depth)``.
+    """
+    if not (l_top > 0.0 and l_bottom > 0.0):
+        raise ValueError('triangular edge lengths must be positive')
+    z0, z1 = float(z[0]), float(z[-1])
+    if z1 <= z0:
+        raise ValueError('bottom depth must be larger than top depth')
+
+    zmid = 0.5 * (z[:-1] + z[1:])
+    dips = np.asarray(dips, dtype=float)
+    dip_at = lambda zq: np.interp(zq, zmid, dips)   # scalar or array
+    size_at = lambda zq: edge_size_profile(zq, z0, z1, l_top, l_bottom,
+                                           grading)
+    # triangular lattice: row spacing = L sin(60 deg) gives equilateral cells
+    step_at = lambda zq: size_at(zq) * np.sqrt(3.0) / 2.0
+
+    rows = graded_depth_rows(z0, z1, step_at, dip_at)
+    lvl_len = contour_lengths(C)
+    len_at = lambda zq: float(np.interp(zq, z, lvl_len))
+    l_ref = float(np.median(lvl_len))          # constant chart width
+
+    # chart Y: true slant distance from the shallow edge
+    slant = np.r_[0.0, np.cumsum(
+        np.diff(rows) / np.sin(np.radians(
+            0.5 * (dip_at(rows[:-1]) + dip_at(rows[1:])))))]
+
+    chart, xy, zz, row_counts = [], [], [], []
+    for k, zq in enumerate(rows):
+        nk = int(max(1, round(len_at(zq) / size_at(zq))))
+        dx = l_ref / nk
+        if k % 2:
+            # half-cell offset: interior nodes plus both boundary nodes
+            xchart = np.r_[0.0, (np.arange(nk) + 0.5) * dx, l_ref]
+        else:
+            xchart = np.linspace(0.0, l_ref, nk + 1)
+        s = xchart / l_ref
+        n = len(xchart)
+        row_counts.append(n)
+        x, y = surface_point(C, z, zq, s)
+        chart.append(np.column_stack([xchart, np.full(n, slant[k])]))
+        xy.append(np.column_stack([x, y]))
+        zz.append(np.full(n, zq))
+    chart = np.vstack(chart)
+    xy = np.vstack(xy)
+    zz = np.concatenate(zz)
+    if len(zz) > max_vertices:
+        raise ValueError(
+            'graded mesh would have %d vertices; increase --tri-edge '
+            '(limit %d)' % (len(zz), max_vertices))
+
+    try:
+        from scipy.spatial import Delaunay
+    except ImportError:
+        raise ImportError('scipy is required for --tri-edge')
+    tris = Delaunay(chart).simplices.copy()
+
+    # enforce the same plan-view CCW convention as write_triangles()
+    p = xy[tris]
+    cross = ((p[:, 1, 0] - p[:, 0, 0]) * (p[:, 2, 1] - p[:, 0, 1])
+             - (p[:, 1, 1] - p[:, 0, 1]) * (p[:, 2, 0] - p[:, 0, 0]))
+    npos, nneg = int(np.sum(cross > 0.0)), int(np.sum(cross < 0.0))
+    if npos and nneg:
+        print('WARNING: graded triangulation changes orientation in plan '
+              'view (%d CCW, %d CW); the fault surface may be folded.'
+              % (npos, nneg))
+    tris[cross < 0.0] = tris[cross < 0.0][:, [0, 2, 1]]
+    ndeg = int(np.sum(np.abs(cross) < 1e-12))
+    if ndeg:
+        print('WARNING: %d zero-area triangles in graded mesh.' % ndeg)
+
+    edges = np.vstack([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]])
+    edges = np.unique(np.sort(edges, axis=1), axis=0)
+    P = np.column_stack([xy, zz])
+    d = P[edges[:, 0]] - P[edges[:, 1]]
+    elen = np.sqrt((d ** 2).sum(axis=1))
+    emid = 0.5 * (zz[edges[:, 0]] + zz[edges[:, 1]])
+    return xy, zz, tris, rows, row_counts, elen, emid
 
 
-def print_summary(args, cfg, qc):
-    dips = cfg['dips']
-    widths = cfg['widths']
-    z_nodes = cfg['z_nodes']
-    n_out = cfg['n_out']
-    nsegs = qc['nsegs']
-    dx = widths * np.cos(np.radians(dips))
+def triangle_min_angles(xy, zz, tris):
+    """Minimum interior angle (deg) of every triangle in 3-D."""
+    P = np.column_stack([xy, zz])
+    pts = P[tris]
+    out = []
+    for a, b, c in ((1, 2, 0), (0, 2, 1), (0, 1, 2)):
+        u = pts[:, a] - pts[:, c]
+        w = pts[:, b] - pts[:, c]
+        den = np.linalg.norm(u, axis=1) * np.linalg.norm(w, axis=1)
+        cosang = (u * w).sum(axis=1) / np.maximum(den, 1e-30)
+        out.append(np.degrees(np.arccos(np.clip(cosang, -1.0, 1.0))))
+    return np.min(np.column_stack(out), axis=1)
 
-    print("")
-    print("trace      : %s" % args.trace)
-    print("  %d segments along strike, total length %.3f km"
-          % (nsegs, qc['total_len']))
-    print("  along-strike direction A -> B : %.2f deg (mean)"
-          % qc['az0'])
-    if qc['reverse']:
-        print("  trace written in reverse order (--dip-side left) : "
-              "A -> B = %.2f deg" % ((qc['az0'] + 180.0) % 360.0))
-    print("  down-dip azimuth              : %.2f - %.2f deg"
-          % (np.min(qc['dip_az']), np.max(qc['dip_az'])))
-    print("  dip direction relative to A->B: right-hand side")
-    print("")
-    print("geometry   : nsegs=%d ndeps=%d (%d patches)"
-          % (nsegs, n_out, nsegs * n_out))
-    print("  depth        : %.4f - %.4f km" % (z_nodes[0], z_nodes[-1]))
-    print("  dip          : %.4f - %.4f deg (mean %.4f deg)"
-          % (np.min(dips), np.max(dips), np.mean(dips)))
-    print("  patch width  : %.4f - %.4f km (mean %.4f km, total %.4f km)"
-          % (np.min(widths), np.max(widths), np.mean(widths),
-             np.sum(widths)))
-    print("  horizontal   : %.4f km over the full down-dip extent"
-          % np.sum(dx))
-    if cfg['width_mode']:
-        print("  mode         : width-controlled (uniform patches)")
-    else:
-        print("  mode         : depth-controlled")
-    print("  convention   : %s"
-          % ('shallow edge given, dip = 180 + angle'
-             if args.dip_mode == 'reverse' else
-             'deep edge given, dip = true angle'))
-    print("")
-    print("  row   top(km)  bottom(km)   dip(deg)  width(km)   dx(km)")
-    for i in range(n_out):
-        print("  %3d %9.3f %10.3f %10.3f %10.3f %8.3f"
-              % (i, z_nodes[i], z_nodes[i + 1], dips[i], widths[i], dx[i]))
-    print("")
-    print("output written to %s" % args.output)
+
+def write_triangles_graded(base, C, z, dips, proj, l_top, l_bottom, grading):
+    """Write the graded Delaunay mesh and return its statistics."""
+    info = {}
+    (xy, zz, tris, rows, row_counts, elen,
+     emid) = build_graded_triangles(C, z, dips, l_top, l_bottom, grading)
+
+    with open(base + '_vertex.dat', 'w') as fid:
+        fid.write('# idx lat lon depth_km (depth positive downward)\n')
+        for k in range(len(zz)):
+            lo, la = proj.to_ll(xy[k, 0], xy[k, 1])
+            fid.write('%6d %13.7f %13.7f %10.4f\n'
+                      % (k + 1, la, lo, zz[k]))
+
+    with open(base + '_element.dat', 'w') as fid:
+        fid.write('# idx1 idx2 idx3 slip_ss_mm slip_ds_mm slip_ts_mm\n')
+        for a, b, c in tris:
+            fid.write('%6d %6d %6d %14.4f %14.4f %14.4f\n'
+                      % (a + 1, b + 1, c + 1, 0.0, 0.0, 0.0))
+
+    minang = triangle_min_angles(xy, zz, tris)
+    info.update(xy=xy, z=zz, tris=tris, rows=rows, row_counts=row_counts,
+                elen=elen, emid=emid, min_angle=float(minang.min()),
+                nvert=len(zz), ntri=len(tris),
+                emin=float(elen.min()), emax=float(elen.max()),
+                emean=float(elen.mean()),
+                nsliver=int(np.sum(minang < 15.0)))
+    return info
 
 
 # ---------------------------------------------------------------------------
-# QC figure
+# QC
 # ---------------------------------------------------------------------------
-SURFACE = '#fcfcfb'
-INK = '#0b0b0b'
-INK_2 = '#52514e'
-GRID = '#d9d8d4'
-C_BLUE = '#2a78d6'
-C_ORANGE = '#eb6834'
-BLUE_RAMP = ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5',
-             '#256abf', '#184f95', '#0d366b']
+def encoding_misfit(path, nsegs, ndeps, C, proj):
+    """Reload the written faultgeom and compare its deep edge with the mesh."""
+    try:
+        from pyginvc.Geometry.Patch import Fault
+    except Exception as exc:                       # pragma: no cover
+        print('WARNING: pyginvc not importable, skip encoding check: %s' % exc)
+        return None
+    flt = Fault(path, nsegs, ndeps, False)
+    flt.load_fault()
+    fe = flt.FaultGeom2AllVertex()
+    d = []
+    for k, (_, r) in enumerate(fe.iterrows()):
+        i, j = divmod(k, nsegs)
+        seg = (C[i + 1, j], C[i + 1, j + 1])
+        for lon, lat in ((r['lt_lon'], r['lt_lat']),
+                         (r['rt_lon'], r['rt_lat'])):
+            e, n = proj.to_xy(np.array([lon]), np.array([lat]))
+            d.append(point_segment_distance(np.array([e[0], n[0]]), seg))
+    return np.array(d)
 
 
-def make_plot(filename, args, cfg, qc):
+def point_segment_distance(p, seg):
+    a, b = seg
+    ab = b - a
+    t = np.clip(np.dot(p - a, ab) / max(np.dot(ab, ab), 1e-12), 0.0, 1.0)
+    return float(np.hypot(*(p - (a + t * ab))))
+
+
+def make_figure(path, Cin, Csm, z, rows, proj, args):
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
 
-    proj = qc['proj']
-    nsegs = qc['nsegs']
-    column = args.plot_column
-    if column < 0 or column >= nsegs:
-        raise ValueError("--plot-column must be in [0, %d)" % nsegs)
-
-    dips = cfg['dips']
-    widths = cfg['widths']
-    z_nodes = cfg['z_nodes']
-    n_out = cfg['n_out']
-    dx = widths * np.cos(np.radians(dips))
-    x_nodes = np.r_[0.0, np.cumsum(dx)]
-    z_mid = 0.5 * (z_nodes[:-1] + z_nodes[1:])
-
-    fig, axes = plt.subplots(1, 3, figsize=(16.5, 5.6),
-                             facecolor=SURFACE)
-    for ax in axes:
-        ax.set_facecolor(SURFACE)
-        for spine in ax.spines.values():
-            spine.set_color(GRID)
-        ax.tick_params(colors=INK_2, labelsize=9)
-        ax.grid(True, color=GRID, linestyle=':', linewidth=0.6)
-
-    # ---- (1) map view ---------------------------------------------------
+    fig, axes = plt.subplots(1, 2, figsize=(15.0, 8.0),
+                             gridspec_kw={'width_ratios': [1.35, 1.0]})
     ax = axes[0]
-    lon0, lat0 = proj.to_ll(qc['A'][:, 0], qc['A'][:, 1])
-    lon1, lat1 = proj.to_ll(qc['B'][:, 0], qc['B'][:, 1])
-    tr_lon = np.r_[lon0, lon1[-1]]
-    tr_lat = np.r_[lat0, lat1[-1]]
-    ax.plot(tr_lon, tr_lat, color=C_BLUE, linewidth=2.0,
-            label='surface trace')
-    deep = qc['rows_xy'][-1]
-    dlon, dlat = proj.to_ll(deep[:, 0], deep[:, 1])
-    ax.plot(np.r_[dlon, dlon[0]], np.r_[dlat, dlat[0]], color=C_BLUE,
-            linewidth=1.4, linestyle='--', label='deepest row')
+    cmap = plt.cm.viridis
 
-    # dip-direction ticks at a few columns
-    step = max(1, nsegs // 8)
-    tick_len = 0.25 * max(1.0, np.sum(dx))
-    for j in range(0, nsegs, step):
-        e0 = 0.5 * (qc['A'][j, 0] + qc['B'][j, 0])
-        n0 = 0.5 * (qc['A'][j, 1] + qc['B'][j, 1])
-        e1 = e0 + qc['uvec'][j, 0] * tick_len
-        n1 = n0 + qc['uvec'][j, 1] * tick_len
-        tlon, tlat = proj.to_ll([e0, e1], [n0, n1])
-        ax.plot(tlon, tlat, color=C_ORANGE, linewidth=1.2,
-                solid_capstyle='round',
-                label='dip direction' if j == 0 else None)
+    for i in range(Cin.shape[0]):
+        lo, la = proj.to_ll(Cin[i, :, 0], Cin[i, :, 1])
+        ax.plot(lo, la, color='0.72', lw=0.7, ls='--',
+                label='initial contours' if i == 1 else None)
+    for i in range(Csm.shape[0]):
+        lo, la = proj.to_ll(Csm[i, :, 0], Csm[i, :, 1])
+        ax.plot(lo, la, color=cmap(i / max(1, Csm.shape[0] - 1)), lw=1.4,
+                label='smoothed contours' if i == 1 else None)
 
-    ax.set_aspect(1.0 / max(0.2, np.cos(np.radians(np.mean(lat0)))))
-    ax.set_xlabel('longitude (deg)', color=INK_2)
-    ax.set_ylabel('latitude (deg)', color=INK_2)
-    ax.set_title('Map view', color=INK, fontsize=12, loc='left')
-    ax.legend(frameon=False, fontsize=8, labelcolor=INK_2,
-              loc='best')
+    for r in rows:
+        quad = np.vstack([r['p00'], r['p01'], r['p11'], r['p10'],
+                          r['p00']])
+        lo, la = proj.to_ll(quad[:, 0], quad[:, 1])
+        ax.plot(lo, la, color='#d62728', lw=0.35, alpha=0.7)
 
-    # ---- (2) cross-section ---------------------------------------------
-    ax = axes[1]
-    ax.plot(x_nodes, z_nodes, color=C_BLUE, linewidth=2.0,
-            marker='o', markersize=3.5, label='fault surface')
-    ax.plot([0.0], [z_nodes[0]], marker='o', markersize=8,
-            markerfacecolor=C_ORANGE, markeredgecolor=SURFACE,
-            markeredgewidth=1.5, linestyle='none', label='surface trace')
-    ax.invert_yaxis()
-    ax.set_aspect('equal', adjustable='datalim')
-    ax.set_xlabel('horizontal distance along dip (km)', color=INK_2)
-    ax.set_ylabel('depth (km)', color=INK_2)
-    ax.set_title('Cross-section (column %d)' % column, color=INK,
-                 fontsize=12, loc='left')
-    ax.legend(frameon=False, fontsize=8, labelcolor=INK_2, loc='best')
-    if n_out <= 20:
-        for i in range(n_out + 1):
-            ax.annotate('%d' % i, (x_nodes[i], z_nodes[i]),
-                        textcoords='offset points', xytext=(4, -8),
-                        fontsize=7, color=INK_2)
+    lo, la = proj.to_ll(Csm[0, :, 0], Csm[0, :, 1])
+    ax.plot(lo, la, color='k', lw=2.2, label='surface trace')
 
-    # ---- (3) dip profile -----------------------------------------------
-    ax = axes[2]
-    ax.plot(dips, z_mid, color=C_BLUE, linewidth=2.0, marker='o',
-            markersize=4, label='dip profile')
-    ax.invert_yaxis()
-    ax.set_xlabel('dip (degrees)', color=INK_2)
-    ax.set_ylabel('depth (km)', color=INK_2)
-    ax.set_title('Dip versus depth', color=INK, fontsize=12, loc='left')
-    ax.legend(frameon=False, fontsize=8, labelcolor=INK_2, loc='best')
+    ax.set_aspect(1.0 / np.cos(np.radians(np.mean(la))))
+    ax.set_xlabel('longitude (deg)')
+    ax.set_ylabel('latitude (deg)')
+    ax.set_title('Contours and quad subfaults (colour = smoothed contour)',
+                 fontsize=11, loc='left')
+    ax.grid(True, ls=':', lw=0.5, alpha=0.6)
+    ax.legend(loc='best', fontsize=8, frameon=True)
 
-    fig.tight_layout()
-    fig.savefig(filename, dpi=150, facecolor=SURFACE)
+    # --- right: along-strike spacing per level ---------------------------
+    ax2 = axes[1]
+
+    def min_spacing(C):
+        d = np.hypot(np.diff(C[:, :, 0], axis=1),
+                     np.diff(C[:, :, 1], axis=1))
+        return d.min(axis=1), np.median(d, axis=1)
+
+    dmin_i, dmed_i = min_spacing(Cin)
+    dmin_s, dmed_s = min_spacing(Csm)
+    ax2.plot(z, dmin_i, 'o--', color='0.55', ms=4,
+             label='initial: min spacing')
+    ax2.plot(z, dmin_s, 'o-', color='#1f77b4', ms=4,
+             label='smoothed: min spacing')
+    ax2.plot(z, dmed_s, 's-', color='#1f77b4', ms=3, alpha=0.45,
+             label='smoothed: median spacing')
+    ax2.axhline(0.0, color='#d62728', lw=0.8, ls=':')
+    ax2.set_xlabel('depth (km)')
+    ax2.set_ylabel('along-strike spacing (km)')
+    ax2.set_title('Column spacing versus depth', fontsize=11, loc='left')
+    ax2.grid(True, ls=':', lw=0.5, alpha=0.6)
+    ax2.legend(loc='best', fontsize=8, frameon=True)
+    ax2.invert_yaxis()
+
+    fig.suptitle('%s: nsegs=%d ndeps=%d, %s smoothing=%d'
+                 % (os.path.basename(args.trace), args.nsegs, args.ndeps,
+                    args.contour_method, args._window), fontsize=12)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    for ext in ('png', 'pdf'):
+        fig.savefig('%s.%s' % (path, ext), dpi=170, bbox_inches='tight')
     plt.close(fig)
 
 
-# ---------------------------------------------------------------------------
-# 3D patch view: rendering is delegated to pyginvc's Fault.plot_faultgeom
-# ---------------------------------------------------------------------------
-def make_plot3d(filename, args, cfg, qc, out):
-    """3D view of the built patches with pyginvc's own plotter.
+def make_profile_figure(path, z, dips, args):
+    """断层剖面图：深度 vs 距离。
 
-    Patch polygons, patch indices and the aftershock overlay are drawn by
-    ``pyginvc.Geometry.Patch.Fault.plot_faultgeom``; this wrapper only picks
-    the per-patch colour value and saves the resulting figure.
+    左：深度 vs 沿倾向的水平距离 cum = sum(dz/tan(dip))；
+    右：深度 vs 沿断层面的斜距 s = sum(dz/sin(dip))。
+    两图都标注每层倾角，地表在上，listric 形态一目了然。
     """
     import matplotlib
-    if not args.plot3d_show:
-        matplotlib.use('Agg')
-    import warnings
-
+    matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-    from pyginvc.Geometry.Patch import Fault
 
-    n = qc['nsegs']
-    zmid = 0.5 * (cfg['z_nodes'][:-1] + cfg['z_nodes'][1:])
-    if args.color_by == 'depth':
-        value = np.repeat(zmid, n)
-        clabel = 'depth (km)'
-    elif args.color_by == 'dip':
-        value = np.repeat(cfg['dips'], n)
-        clabel = 'dip (deg)'
-    elif args.color_by == 'width':
-        value = np.repeat(cfg['widths'], n)
-        clabel = 'patch width (km)'
-    else:
-        value = np.hypot(np.hypot(out[:, 7], out[:, 8]), out[:, 9])
-        clabel = 'slip (mm)'
-        if not np.any(value):
-            print("WARNING: all slip values are zero; colouring by depth "
-                  "instead.", file=sys.stderr)
-            args.color_by = 'depth'
-            value = np.repeat(zmid, n)
-            clabel = 'depth (km)'
+    zmid = 0.5 * (z[:-1] + z[1:])
+    dz = np.diff(z)
+    cum = np.r_[0.0, np.cumsum(dz / np.tan(np.radians(dips)))]
+    slant = np.r_[0.0, np.cumsum(dz / np.sin(np.radians(dips)))]
 
-    fault = Fault(args.output, n, cfg['n_out'], False)
-    fault.load_fault()
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            'ignore', message='FigureCanvasAgg is non-interactive')
-        fault.plot_faultgeom(value=value, afsfile=args.aftershock,
-                             coordtype='llh', show_idx=args.show_index,
-                             azimuth=args.view_azimuth,
-                             elevation=args.view_elevation)
+    # Give each panel a width proportional to its distance span so both can
+    # use the same km-per-inch scale without wasting horizontal space.  A
+    # (near-)vertical fault has no horizontal distance: its panel has no
+    # meaningful x scale, so reserve a normal-width cell for it below.
+    zspan = float(max(abs(z[-1] - z[0]), 1e-9))
+    xspans = [abs(cum[-1] - cum[0]), abs(slant[-1] - slant[0])]
+    good = [s if s > 1e-6 * zspan else None for s in xspans]
+    ref = max([s for s in good if s] + [zspan])
+    width_ratios = [s if s else 0.6 * ref for s in good]
+    fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.6), sharey=True,
+                             gridspec_kw={'width_ratios': width_ratios})
+    for ax, dist, xlabel in (
+            (axes[0], cum, 'horizontal distance along dip (km)'),
+            (axes[1], slant, 'distance along fault plane (km)')):
+        ax.plot(dist, z, 'o-', color='#1f77b4', lw=1.8, ms=4)
+        for i, dip in enumerate(dips):
+            ax.annotate('%.0f°' % dip,
+                        xy=(0.5 * (dist[i] + dist[i + 1]), zmid[i]),
+                        textcoords='offset points', xytext=(5, 0),
+                        fontsize=8, va='center', color='0.25')
+        ax.set_xlabel(xlabel)
+        if abs(dist[-1] - dist[0]) <= 1e-6 * zspan:
+            # Vertical fault: every point is at x = 0, so an equal aspect
+            # would collapse the axes to a sliver.  Any x scale is truthful
+            # here; use a full-width panel with the fault line at zero.
+            ax.set_xlim(-1.0, 1.0)
+        else:
+            # True scale: one kilometre has the same length on both axes,
+            # so a 40 km deep fault with 20 km of horizontal offset is
+            # drawn 2:1.
+            ax.set_aspect('equal', adjustable='box')
+        ax.grid(True, ls=':', lw=0.5, alpha=0.6)
+    # sharey=True: inverting both axes would cancel out, so invert once
+    axes[0].invert_yaxis()
+    axes[0].set_ylabel('depth (km)')
+    extra = ''
+    if args.profile in ('exp', 'log'):
+        extra = ', decay=%.1f' % args.profile_decay
+    elif args.profile == 'power':
+        extra = ', p=%.2f' % args.power
+    elif args.profile == 'logistic':
+        extra = ', t0=%.2f, s=%.3f' % (args.profile_t0, args.profile_s)
+    axes[0].set_title('Fault cross-section (dip profile: %s%s)'
+                      % (args.profile, extra),
+                      fontsize=11, loc='left')
+    fig.tight_layout()
+    for ext in ('png', 'pdf'):
+        fig.savefig('%s.%s' % (path, ext), dpi=170, bbox_inches='tight')
+    plt.close(fig)
 
-    # the built-in colourbar is hard-wired to the file's slip values, so
-    # relabel/re-scale it when another quantity was used for the patches
-    fig = plt.gcf()
-    fig.set_size_inches(10.0, 8.0)
-    if args.color_by != 'slip':
-        cb = fig.axes[-1]
-        ax3 = fig.axes[0]
-        vmax = float(np.max(np.abs(value))) or 1.0
-        cb.remove()
-        sm = plt.cm.ScalarMappable(norm=plt.Normalize(0.0, vmax),
-                                   cmap=plt.cm.jet)
-        fig.colorbar(sm, ax=ax3, shrink=0.6, pad=0.1, label=clabel)
 
-    fig.savefig(filename, dpi=160, bbox_inches='tight',
-                facecolor=fig.get_facecolor())
+def make_tri_figure(path, info, z, l_top, l_bottom, grading, proj):
+    """QC figure for the graded triangular mesh.
+
+    Left: map view of the triangles coloured by depth (the fault surface is
+    viewed from above, so deeper rows appear next to the trace).  Right: every
+    edge length versus its mean depth, with the requested target profile.
+    """
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import LineCollection
+
+    xy, zz, tris = info['xy'], info['z'], info['tris']
+    edges = np.vstack([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]])
+    edges = np.unique(np.sort(edges, axis=1), axis=0)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14.0, 6.4),
+                             gridspec_kw={'width_ratios': [1.35, 1.0]})
+    ax = axes[0]
+
+    segs = []
+    for a, b in edges:
+        lo, la = proj.to_ll(xy[[a, b], 0], xy[[a, b], 1])
+        segs.append(np.column_stack([lo, la]))
+    lc = LineCollection(segs, cmap='viridis', linewidths=0.45, alpha=0.9)
+    lc.set_array(0.5 * (zz[edges[:, 0]] + zz[edges[:, 1]]))
+    ax.add_collection(lc)
+    ax.autoscale()
+
+    n0 = info['row_counts'][0]                    # shallow edge nodes first
+    lo, la = proj.to_ll(xy[:n0, 0], xy[:n0, 1])
+    ax.plot(lo, la, color='k', lw=2.0, label='surface trace')
+
+    lo_all, la_all = proj.to_ll(xy[:, 0], xy[:, 1])
+    ax.set_aspect(1.0 / np.cos(np.radians(np.mean(la_all))))
+    ax.set_xlabel('longitude (deg)')
+    ax.set_ylabel('latitude (deg)')
+    ax.set_title('Graded triangular mesh in map view', fontsize=11, loc='left')
+    ax.grid(True, ls=':', lw=0.5, alpha=0.6)
+    ax.legend(loc='best', fontsize=8, frameon=True)
+    cb = fig.colorbar(lc, ax=ax, shrink=0.85, pad=0.02)
+    cb.set_label('depth (km)')
+
+    ax2 = axes[1]
+    ax2.scatter(info['elen'], info['emid'], s=4, c=info['emid'],
+                cmap='viridis', alpha=0.5, edgecolors='none')
+    zzq = np.linspace(z[0], z[-1], 400)
+    target = [edge_size_profile(q, z[0], z[-1], l_top, l_bottom, grading)
+              for q in zzq]
+    ax2.plot(target, zzq, color='#d62728', lw=2.0, label='target')
+    for zr in info['rows']:
+        ax2.axhline(zr, color='0.85', lw=0.3, zorder=0)
+    ax2.set_xlabel('3-D edge length (km)')
+    ax2.set_ylabel('depth (km)')
+    ax2.set_title('Edge length versus depth', fontsize=11, loc='left')
+    ax2.grid(True, ls=':', lw=0.5, alpha=0.6)
+    ax2.legend(loc='best', fontsize=8, frameon=True)
+    ax2.invert_yaxis()
+
+    fig.suptitle('Graded triangular mesh: %d vertices, %d triangles; '
+                 'target %.2f-%.2f km (%s grading)'
+                 % (info['nvert'], info['ntri'], l_top, l_bottom, grading),
+                 fontsize=12)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    for ext in ('png', 'pdf'):
+        fig.savefig('%s.%s' % (path, ext), dpi=170, bbox_inches='tight')
     plt.close(fig)
 
 
 # ---------------------------------------------------------------------------
-def main(argv=None):
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    try:
-        cfg = resolve_arguments(args)
-        out, cfg, qc = build_geometry(args, cfg)
-        write_output(args, cfg, out, qc)
-        print_summary(args, cfg, qc)
-        if args.plot is not None:
-            plotfile = args.plot if args.plot else 'trace2faultgeom.png'
-            make_plot(plotfile, args, cfg, qc)
-            print("QC figure written to %s" % plotfile)
-        if args.plot3d is not None:
-            plotfile3d = args.plot3d if args.plot3d else \
-                os.path.splitext(args.output)[0] + '_3d.png'
-            make_plot3d(plotfile3d, args, cfg, qc, out)
-            print("3D figure written to %s" % plotfile3d)
-    except (ValueError, IOError, ImportError) as err:
-        print("ERROR: %s" % err, file=sys.stderr)
-        return 1
-    return 0
+def main():
+    p = argparse.ArgumentParser(
+        description='Smooth iso-depth contours and build a quad fault mesh. '
+                    'Only the fault geometry (--trace/--nsegs/--ndeps/'
+                    '--top-depth/--bottom-depth/--top-dip/--bottom-dip/'
+                    '--dip-azimuth/--output) is required; meshing details '
+                    'have built-in defaults.')
+    p.add_argument('--trace', required=True, help='surface trace file')
+    p.add_argument('--nsegs', type=int, required=True,
+                   help='patches along strike')
+    p.add_argument('--ndeps', type=int, required=True,
+                   help='patches down dip')
+    p.add_argument('--top-depth', type=float, required=True,
+                   help='depth of the shallow edge (km)')
+    p.add_argument('--bottom-depth', type=float, required=True,
+                   help='depth of the deep edge (km)')
+    p.add_argument('--top-dip', type=float, required=True,
+                   help='dip at the top (deg)')
+    p.add_argument('--bottom-dip', type=float, required=True,
+                   help='dip at the bottom (deg)')
+    p.add_argument('--dip-azimuth', type=float, required=True,
+                   help='absolute down-dip azimuth (deg)')
+    p.add_argument('--output', required=True,
+                   help='output base path (no extension)')
+    # --- optional meshing details (sensible built-in values) ------------
+    p.add_argument('--strike-mode', default='mean',
+                   choices=['segment', 'mean'],
+                   help='default mean: every depth contour is a translated '
+                        'copy of the surface trace, shifted along the normal '
+                        'to the mean strike by dz/tan(dip); segment: extrude '
+                        'each patch along its own segment normal')
+    p.add_argument('--profile', default='linear',
+                   choices=['linear', 'exp', 'power', 'log', 'logistic',
+                            'sine', 'cosine', 'smoothstep'],
+                   help='dip profile from top to bottom (default linear). '
+                        'exp = steep at the top and progressively gentler '
+                        'down dip (top-dip must be larger than bottom-dip). '
+                        'power = t**p, p<1 changes fast shallow and keeps '
+                        'changing down dip, p>1 changes fast deep. '
+                        'logistic = turns over sharply around t0')
+    p.add_argument('--profile-decay', type=float, default=3.0,
+                   help='exp/log profile: how fast the dip approaches the '
+                        'bottom value (default 3.0; larger = flattens sooner)')
+    p.add_argument('--power', type=float, default=1.0,
+                   help='power profile exponent p in f=t**p (default 1.0). '
+                        'p<1: rapid change at the top, sustained change with '
+                        'depth; p>1: flat shallow, rapid change at depth')
+    p.add_argument('--profile-t0', type=float, default=0.5,
+                   help='logistic profile: normalized depth (0-1) of the '
+                        'steepest dip change (default 0.5)')
+    p.add_argument('--profile-s', type=float, default=0.1,
+                   help='logistic profile: transition width in normalized '
+                        'depth (default 0.1; smaller = sharper bend)')
+    p.add_argument('--smooth', type=int, default=10,
+                   help='surface trace smoothing window (default 10; 1 = none)')
+    p.add_argument('--contour-method', default='direction',
+                   choices=['direction', 'nodes'],
+                   help='contour smoothing method (default direction)')
+    p.add_argument('--contour-smooth-km', type=float, default=None,
+                   help='contour smoothing length in km (default: auto)')
+    p.add_argument('--tri', action='store_true',
+                   help='also write a triangular mesh (base_vertex.dat, '
+                        'base_element.dat) readable by TriSlipInversion.py')
+    p.add_argument('--tri-edge', type=float, default=None, metavar='KM',
+                   help='target 3-D edge length (km) of an independently '
+                        're-meshed triangular grid; implies --tri.  Serves '
+                        'as the default for --tri-edge-top/-bottom')
+    p.add_argument('--tri-edge-top', type=float, default=None, metavar='KM',
+                   help='target edge length (km) at the shallow edge')
+    p.add_argument('--tri-edge-bottom', type=float, default=None, metavar='KM',
+                   help='target edge length (km) at the deep edge')
+    p.add_argument('--tri-grading', default='geometric',
+                   choices=['geometric', 'linear', 'smoothstep'],
+                   help='how the target edge length transitions from the '
+                        'shallow to the deep edge (default geometric: '
+                        'constant ratio between neighbouring rows)')
+    args = p.parse_args()
+
+    # --tri-edge is the default for both ends; specifying either end alone
+    # makes the mesh uniform at that size.
+    l_top = args.tri_edge_top if args.tri_edge_top is not None else args.tri_edge
+    l_bot = (args.tri_edge_bottom if args.tri_edge_bottom is not None
+             else args.tri_edge)
+    if l_top is not None and l_bot is None:
+        l_bot = l_top
+    if l_bot is not None and l_top is None:
+        l_top = l_bot
+    if l_top is not None:
+        if l_top <= 0.0 or l_bot <= 0.0:
+            p.error('triangular edge lengths must be positive')
+        args.tri = True
+
+    proj, A, B, uvec, total, az0, reverse = build_surface(args)
+    contour_smooth, contour_smooth_max = 5, 41
+    if args.contour_smooth_km is not None:
+        node_km = total / max(1, args.nsegs)
+        w = int(round(args.contour_smooth_km / node_km))
+        contour_smooth = max(1, w + (1 - w % 2))
+        print('contour smoothing length %.1f km -> window %d (node spacing '
+              '%.2f km)' % (args.contour_smooth_km, contour_smooth, node_km))
+    z, dips = depth_levels(args)
+    if args.strike_mode == 'mean':
+        # 深部各层 = 地表迹线的纯平移（沿平均走向法向 + 垂向深度），
+        # 形状与总长度保持不变，不会随深度扩散
+        Csm, cum, u_mean = build_mean_strike_mesh(
+            A, B, z, dips, az0, args.dip_azimuth)
+        Cin = Csm
+        window = 1
+        area_s, bad_s = cell_validity(Csm)
+        lengths = [np.sum(np.hypot(np.diff(Cin[i, :, 0]),
+                                   np.diff(Cin[i, :, 1])))
+                   for i in range(len(z))]
+        print('mean-strike mesh: %d contours, each a translation of the '
+              'surface trace (length %.2f-%.2f km, identical shape)'
+              % (len(z), min(lengths), max(lengths)))
+        print('mean-strike shift: horizontal offset %.2f km at %.1f km depth, '
+              'direction azimuth %.1f deg'
+              % (cum[-1], z[-1], np.degrees(np.arctan2(u_mean[0], u_mean[1]))
+                 % 360.0))
+    else:
+        Cin, cum = initial_contours(A, B, uvec, z, dips)
+    print('trace length %.2f km, %d segments, %d depth levels'
+          % (total, args.nsegs, len(z)))
+    print('surface azimuth %.1f deg (%s strike mode), dip azimuth %.1f deg%s'
+          % (az0, args.strike_mode, args.dip_azimuth,
+             ' (trace reversed)' if reverse else ''))
+
+    area_i, bad_i = cell_validity(Cin)
+    nbad = int(bad_i.sum())
+    if nbad:
+        i0 = int(np.where(bad_i.any(axis=1))[0][0])
+        print('initial mesh: %d degenerate quads, first at level %d (%.1f km)'
+              % (nbad, i0, z[i0]))
+    else:
+        print('initial mesh: no degenerate quads')
+
+    if args.strike_mode == 'mean':
+        print('mean-strike mode: depth contours are translated copies of the '
+              'surface trace (contour smoothing skipped)')
+    elif args.contour_method == 'direction':
+        nodes = np.vstack([A, B[-1][None, :]])
+        Csm, window, area_s, bad_s = choose_direction(
+            nodes, uvec, cum, contour_smooth, contour_smooth_max)
+    else:
+        Csm, window, area_s, bad_s = choose_smoothing(
+            Cin, contour_smooth, contour_smooth_max)
+    args._window = window
+    print('%s smoothing window %d: %d degenerate quads'
+          % ('mean' if args.strike_mode == 'mean' else args.contour_method,
+             window, int(bad_s.sum())))
+
+    dmin = np.min(np.hypot(np.diff(Csm[:, :, 0], axis=1),
+                           np.diff(Csm[:, :, 1], axis=1)))
+    print('smoothed mesh: min along-strike spacing %.3f km' % dmin)
+
+    # ---- quad mesh rows -------------------------------------------------
+    rows = patches(Csm, z)
+    for r in rows:
+        r['depth'] = z[r['i']]
+
+    # ---- initial faultgeom ---------------------------------------------
+    if args.strike_mode == 'mean':
+        # mean 模式下"初始"几何就是平移拷贝，与最终网格完全一致
+        rows_i = rows
+        header_i = ['quad fault mesh built by smooth_fault_mesh.py',
+                    'trace      : %s (%d segments along strike)' % (
+                        args.trace, args.nsegs),
+                    'grid       : nsegs=%d ndeps=%d' % (args.nsegs,
+                                                       args.ndeps),
+                    'geometry   : mean-strike translation of the surface '
+                    'trace (same as smoothed mesh)',
+                    'depth      : %.3f - %.3f km' % (z[0], z[-1])]
+    else:
+        # Exactly reproduce trace2faultgeom.py: every patch edge is shifted
+        # along its own segment normal, so adjacent patches may gap/overlap.
+        dz_all = np.diff(z)
+        widths_i = dz_all / np.sin(np.radians(dips))
+        rows_i = []
+        for i in range(args.ndeps):
+            for j in range(args.nsegs):
+                p00 = A[j] + cum[i] * uvec[j]
+                p01 = B[j] + cum[i] * uvec[j]
+                top = p01 - p00
+                rows_i.append(dict(
+                    i=i, j=j, p00=p00, p01=p01, p10=None, p11=None,
+                    width=widths_i[i], dip=dips[i],
+                    strike=np.degrees(np.arctan2(top[0], top[1])) % 360.0,
+                    wperp=dz_all[i] / np.tan(np.radians(dips[i])),
+                    depth=z[i]))
+        header_i = ['quad fault mesh built by smooth_fault_mesh.py',
+                    'trace      : %s (%d segments along strike)' % (
+                        args.trace, args.nsegs),
+                    'grid       : nsegs=%d ndeps=%d' % (args.nsegs,
+                                                       args.ndeps),
+                    'geometry   : initial straight-ray extrusion (may cross)',
+                    'depth      : %.3f - %.3f km' % (z[0], z[-1])]
+    write_faultgeom(args.output + '_initial.faultgeom', rows_i, proj,
+                    header_i)
+
+    # ---- smoothed quad mesh --------------------------------------------
+    header_s = ['quad fault mesh built by smooth_fault_mesh.py',
+                'trace      : %s (%d segments along strike)' % (args.trace,
+                                                               args.nsegs),
+                'grid       : nsegs=%d ndeps=%d' % (args.nsegs, args.ndeps),
+                'geometry   : %s' % (
+                    'mean-strike translation of the surface trace'
+                    if args.strike_mode == 'mean'
+                    else 'smoothed iso-depth contours -> quad subfaults'),
+                'smoothing  : %s, window=%d (surface window=%d)'
+                % ('translation copy' if args.strike_mode == 'mean'
+                   else args.contour_method + ' method', window, args.smooth),
+                'depth      : %.3f - %.3f km' % (z[0], z[-1]),
+                'dip        : %.2f - %.2f deg'
+                % (np.min(dips), np.max(dips)),
+                'convention : shallow edge, dip column = 180 + angle']
+    geom_s = args.output + '_smoothed.faultgeom'
+    write_faultgeom(geom_s, rows, proj, header_s)
+
+    write_contours(args.output + '_contours.dat', Csm, z, proj, args.nsegs)
+    write_quads(args.output + '_quads.dat', rows, z, proj)
+    tri_info = None
+    if args.tri:
+        if l_top is not None:
+            tri_info = write_triangles_graded(
+                args.output, Csm, z, dips, proj, l_top, l_bot,
+                args.tri_grading)
+            print('graded triangular mesh: %d vertices, %d triangles; '
+                  'target edge %.2f-%.2f km (%s), actual %.2f-%.2f km '
+                  '(mean %.2f); min angle %.1f deg'
+                  % (tri_info['nvert'], tri_info['ntri'], l_top, l_bot,
+                     args.tri_grading, tri_info['emin'], tri_info['emax'],
+                     tri_info['emean'], tri_info['min_angle']))
+            if tri_info['nsliver']:
+                print('WARNING: %d triangles have a minimum angle below '
+                      '15 deg; try a larger --tri-edge or smoother grading.'
+                      % tri_info['nsliver'])
+        else:
+            ntris = write_triangles(args.output, Csm, z, proj)
+            print('triangular mesh: %d triangles, %d vertices'
+                  % (ntris, Csm.shape[0] * Csm.shape[1]))
+
+    # ---- encoding check -------------------------------------------------
+    d = encoding_misfit(geom_s, args.nsegs, args.ndeps, Csm, proj)
+    if d is not None:
+        print('faultgeom parallelogram vs exact quads: '
+              'median %.1f m, max %.1f m' % (1000 * np.median(d),
+                                             1000 * d.max()))
+
+    make_figure(args.output + '_mesh', Cin, Csm, z, rows, proj, args)
+    make_profile_figure(args.output + '_profile', z, dips, args)
+    if tri_info is not None:
+        make_tri_figure(args.output + '_tri_mesh', tri_info, z, l_top, l_bot,
+                        args.tri_grading, proj)
+    written = [args.output + '_initial.faultgeom',
+               args.output + '_contours.dat',
+               args.output + '_quads.dat',
+               args.output + '_smoothed.faultgeom',
+               args.output + '_mesh.png',
+               args.output + '_profile.png']
+    if args.tri:
+        written += [args.output + '_vertex.dat',
+                    args.output + '_element.dat']
+    if tri_info is not None:
+        written += [args.output + '_tri_mesh.png']
+    print('written ' + ', '.join(written))
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    main()

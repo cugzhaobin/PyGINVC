@@ -1,0 +1,141 @@
+############################################################################
+# Unified slip inversion configuration (new schema only).
+#
+# This file is read by:
+#   pyginvc unified-slip --cfgfile config/unified_cfg.yaml
+#
+# It supports any mix of rectangular and triangular faults in one run.
+# Set `enable: false` on a fault to keep its entry in the file but exclude
+# it from the inversion.
+############################################################################
+
+schema: unified-v1
+
+# ---------------------------------------------------------------------------
+# Global settings
+# ---------------------------------------------------------------------------
+global:
+    # Smoothing scan: scalar, explicit list, or [start, stop, step].
+    smoothfactor : [0.1, 0.5, 0.1]
+    # [lat, lon] reference origin.  Empty means average all enabled faults.
+    origin       : []
+    # Per-kind default Laplacian method used when a fault does not override it.
+    # Rectangles: '1' (finite-difference Laplacian) or '4' (Tikhonov).
+    # Triangles:  '1', '2', '3' or '4' (see TriLap).
+    lapmethod:
+        rectangle : '1'
+        triangle  : '3'
+    greenfile    : 'SAVE'      # SAVE -> outpath/green_XX.h5; NONE -> no cache
+    modulus      : 3.0e10      # default shear modulus (Pa)
+    solver       : 'bvls'      # bvls | trf | lstsq
+    bound_switch : True
+    gfiletype    : 'GMT2D'     # default GPS format, can be overridden per file
+    # Defaults shared by every fault.  Per-fault `green:` keys override these.
+    # rake_beta is per-fault only; a global value is ignored.
+    green:
+        greentype : [1, 1, 0]
+        nu        : 0.25
+
+# ---------------------------------------------------------------------------
+# Faults (one entry per fault)
+# ---------------------------------------------------------------------------
+faults:
+    # Rectangular fault: one row is subdivided into nsegs x ndeps patches.
+    - name       : 'rect1'
+      type       : 'rectangle'
+      enable     : True
+      file       : '/path/to/rect1.faultgeom'
+      doSubFault : True
+      nsegs      : 20
+      ndeps      : 10
+      bcs        : [0, 0, 0, 0]          # top, bottom, end, start
+      smoothing_weight : 1.0
+      green:
+          method    : 'okada'            # okada | wang
+          greentype : [1, 1, 0]
+          nu        : 0.25
+          modulus   : 3.0e10
+          rake_beta : 0
+      bound:
+          ss_range  : [-1000, 1000]
+          ds_range  : [0, 5000]
+          op_range  : [0, 0.01]
+          slip_lb   : ''
+          slip_ub   : ''
+
+    # Triangular fault: vertex and element files as used by TriSlipInversion.
+    # The first vertex column is a 1-based index; element indices are 1-based.
+    - name       : 'tri1'
+      type       : 'triangle'
+      enable     : True
+      vertexfile : '/path/to/vertex'
+      elementfile: '/path/to/element'
+      smoothing_weight : 1.0
+      green:
+          method    : 'nikkhoo'          # nikkhoo | meade
+          greentype : [1, 1, 0]
+          nu        : 0.25
+          modulus   : 3.0e10
+          rake_beta : 0
+      bound:
+          ss_range  : [-1000, 1000]
+          ds_range  : [0, 5000]
+          op_range  : [0, 0.01]
+          # Optional triangle slip-bound files with ss/ds/op in columns 4-6.
+          slip_lb   : ''
+          slip_ub   : ''
+
+    # Example disabled fault: kept in the file but not inverted.
+    - name       : 'rect2_disabled'
+      type       : 'rectangle'
+      enable     : False
+      file       : '/path/to/rect2.faultgeom'
+      doSubFault : True
+      nsegs      : 10
+      ndeps      : 5
+      green:
+          method    : 'okada'
+      bound:
+          ss_range  : [-1000, 1000]
+
+# ---------------------------------------------------------------------------
+# GPS data (one entry per file)
+# ---------------------------------------------------------------------------
+gps:
+    - file        : '/path/to/gps.gmtvec'
+      enable      : True
+      type        : 'GMT2D'      # GMT2D | GMT3D | IOS2D | IOS3D
+      weight      : 1.0
+      ramp        : True         # estimate translation/rotation terms
+      ramp_method : 1            # 1 = local translation; 2 = spherical rotation
+
+# ---------------------------------------------------------------------------
+# InSAR data (one entry per track)
+# ---------------------------------------------------------------------------
+insar:
+    - file   : '/path/to/track_los.dat'
+      enable : True
+      weight : 1.0
+      ramp   : True              # False estimates only a reference level
+      sigma  : null              # exponential covariance amplitude
+      lamda  : null              # covariance length scale (km)
+      scale  : 1.0
+
+# ---------------------------------------------------------------------------
+# Leveling data (not implemented yet; leave empty)
+# ---------------------------------------------------------------------------
+leveling: []
+
+# ---------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------
+export:
+    outpath  : './unified_run'
+    view     : False               # show interactive windows after saving
+    view_plots : True              # write slip/obs/ramp/L-curve figures
+    vecscale : null
+    depth_exaggeration : 2.0
+    arrow_scale : 1.0              # GPS arrow length factor in the interactive report
+    report_embed : False           # inline images so each HTML file stands alone
+    interactive_report : True      # write report_interactive.html (plotly)
+    legacy_h5 : False              # also write flat legacy HDF5 if representable

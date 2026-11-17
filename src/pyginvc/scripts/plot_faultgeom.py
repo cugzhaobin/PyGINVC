@@ -27,7 +27,10 @@ def main():
     parser = argparse.ArgumentParser(description="Plot 3D slip distribution.")
     parser.add_argument('--faultfile', type=str, required=True, help='Fault geometry file')
     parser.add_argument('--aftershock', type=str, required=False, default="", help='Aftershock data file')
-    parser.add_argument('--coordtype', type=str, required=False, default='llh', help='Coordinate system: llh/enu')
+    parser.add_argument('--coordtype', type=str.lower, required=False,
+                        default='llh', choices=['llh', 'enu', 'neu'],
+                        help='Coordinate system: llh, enu ("neu" is accepted '
+                             'as an alias of enu)')
     parser.add_argument('--showindex', type=bool, required=False, default=False, help='Show patch indices: False/True')
     parser.add_argument('--azimuth', type=float, required=False, default=-20, help='Azimuth in degrees')
     parser.add_argument('--elevation', type=float, required=False, default=40, help='Elevation in degrees')

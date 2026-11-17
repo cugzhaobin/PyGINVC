@@ -2,8 +2,8 @@ from __future__ import division
 import numpy as np
 from numpy import sin, cos, pi
 
-import Greens.tde.strain_functions as sf
-import Greens.tde.disp_functions as df
+from . import strain_functions as sf
+from . import disp_functions as df
 
 
 '''

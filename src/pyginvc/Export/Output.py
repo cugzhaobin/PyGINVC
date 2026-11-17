@@ -220,6 +220,89 @@ class Output(object):
             return np.array([len(llh_sar)], dtype=int)
         return n_sar
 
+    def _n_gps(self):
+        '''Per-GPS-file station counts, inferred when not stored.'''
+        llh_gps = np.asarray(getattr(self.data, 'llh_gps', np.empty((0, 2))))
+        nsta = len(llh_gps)
+        if nsta == 0:
+            return np.array([], dtype=int)
+
+        n_gps = getattr(self.data, 'n_gps', None)
+        if n_gps is None or np.size(n_gps) == 0:
+            return np.array([nsta], dtype=int)
+
+        n_gps = np.atleast_1d(n_gps).astype(int)
+        if (int(n_gps.sum()) != nsta or (n_gps < 0).any()):
+            return np.array([nsta], dtype=int)
+        return n_gps
+
+    def _n_lev(self):
+        '''Per-leveling-file point counts, inferred when not stored.'''
+        llh_lev = np.asarray(getattr(self.data, 'llh_lev', np.empty((0, 2))))
+        n_lev = len(llh_lev)
+        if n_lev == 0:
+            return np.array([], dtype=int)
+
+        counts = getattr(self.data, 'n_lev', None)
+        if counts is None or np.size(counts) == 0:
+            return np.array([n_lev], dtype=int)
+
+        counts = np.atleast_1d(counts).astype(int)
+        if int(counts.sum()) != n_lev:
+            return np.array([n_lev], dtype=int)
+        return counts
+
+    def _data_file_names(self, kind):
+        '''Base names of the input files of one kind ('gps', 'lev', 'sar').'''
+        files_attr = {'gps': 'gpsfiles', 'lev': 'levfiles',
+                      'sar': 'sarfiles'}[kind]
+        names = getattr(self.data, files_attr, None)
+        if names is not None:
+            names = [names] if isinstance(names, str) else list(names)
+            out = [os.path.basename(str(n)) if n else '' for n in names]
+            if any(out):
+                return out
+
+        # GeoDataCollection keeps one loaded object per file.
+        objs_attr = {'gps': 'gps_data', 'lev': 'lev_data',
+                     'sar': 'sar_data'}[kind]
+        file_attr = {'gps': 'gpsfile', 'lev': 'levfile',
+                     'sar': 'sarfile'}[kind]
+        objs = getattr(self.data, objs_attr, None)
+        if objs:
+            return [os.path.basename(str(getattr(o, file_attr, '') or ''))
+                    for o in objs]
+        return []
+
+    def _fit_table_rows(self, sv):
+        '''Per-data-file WRMS, WRSS/N and variance reduction.'''
+        if sv is None or sv.dhat is None:
+            return []
+        data = self.data
+        return ou.fit_table(
+            getattr(data, 'd_gps', np.empty(0)),
+            getattr(data, 'ndim', 2),
+            getattr(data, 'd_lev', np.empty(0)),
+            getattr(data, 'd_sar', np.empty(0)),
+            sv.dhat, residual=sv.r,
+            n_gps=self._n_gps(), n_lev=self._n_lev(), n_sar=self._n_sar(),
+            gps_names=self._data_file_names('gps'),
+            lev_names=self._data_file_names('lev'),
+            sar_names=self._data_file_names('sar'))
+
+    @staticmethod
+    def _fit_display_rows(rows):
+        '''Format fit_table rows for an HTML table.'''
+        out = []
+        for label, typ, n, wrms, wrss_n, vr in rows:
+            out.append([
+                label, typ, int(n),
+                '%.3f' % wrms,
+                '%.3f' % wrss_n,
+                ('%.2f%%' % (100.0 * vr)) if np.isfinite(vr) else '-',
+            ])
+        return out
+
     def _path(self, filename, outdir=None):
         outdir = outdir or self.outdir
         if os.path.isabs(filename):
@@ -256,6 +339,13 @@ class Output(object):
                 'd_gps', 'd_lev', 'd_sar')}
         obs['ndim'] = data.ndim
         obs['n_sar'] = self._n_sar()
+        # Per-file counts / names let the interactive report compute fit
+        # statistics per input file.
+        obs['n_gps'] = self._n_gps()
+        obs['n_lev'] = self._n_lev()
+        obs['gps_files'] = self._data_file_names('gps')
+        obs['lev_files'] = self._data_file_names('lev')
+        obs['sar_files'] = self._data_file_names('sar')
 
         sv = self._solution_view()
         ramp  = None if sv is None else sv.ramp_sar
@@ -781,6 +871,18 @@ class Output(object):
                         rows.append(row)
                     rep.add_table('Inversion summary', headers, rows,
                                   note='One row per tested smoothing factor.')
+
+                fit_rows = self._fit_display_rows(self._fit_table_rows(sv))
+                if fit_rows:
+                    rep.add_table(
+                        'Data fit by file',
+                        ['Data file', 'Type', 'N', 'WRMS (mm)',
+                         'WRSS/N', 'Variance reduction'],
+                        fit_rows,
+                        note='WRMS and variance reduction use unweighted '
+                             'residuals; WRSS/N uses the inversion-weighted '
+                             'residual. Variance reduction is relative to the '
+                             'mean of the observed values.')
 
                 acc = getattr(self.sol, 'acceptance', None)
                 if acc is not None:
