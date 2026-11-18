@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-filter_near_fault_points.py -- remove near-fault observations whose sign is
+filter_outlier_obs.py -- remove near-fault outliers whose observed sign is
 opposite to the model prediction.
 
 Idea
@@ -26,7 +26,8 @@ indices, so the trace is built from ``flt/vertex_llh`` and ``flt/element``
 
 Inputs (default names, all relative to --datadir)
 ------------------------------------------------
-sar_obs_<track>.xyz          observed LOS (mm)
+sar_obs_<track>.xyz          observed LOS (mm), either ``lon lat los`` (as
+                             written by PyGINVC) or ``lon lat los E N U``
 sm000/sar_mod_<track>.xyz    predicted LOS (mm), ramp already included
 sm000/sar_res_<track>.xyz    residual (mm), report only
 gps1_obs.gmtvec              GPS east/north (mm)
@@ -39,17 +40,34 @@ removed when any component flips.
 
 Outputs (in --outdir, default clean_obs/)
 -----------------------------------------
-sar_obs_<track>.xyz          cleaned observation files
+sar_obs_<track>.xyz          cleaned observation files in the PyGINVC input
+                             format ``lon lat los E N U``.  PyGINVC's
+                             SARData reader requires all six columns, so the
+                             E N U unit vectors are taken from, in order:
+                             the input file itself, --los / --cfg, the run's
+                             solutions.h5 (obs/llh_sar + obs/unit), a
+                             6-column .los file found next to the run, or a
+                             nearby solutions.h5; the points are always
+                             matched by coordinates.
 gps1_obs.gmtvec
 gps1_obs_up.gmtvec
-<head of --los>              cleaned source .los, if --los is given
+<name>.los                   cleaned copy of the matched source .los (or a
+                             six-column file rebuilt from solutions.h5 when
+                             no .los is available), so the inversion config
+                             can point at it directly
 removed_points.csv           every removed point with its geometry
 near_fault_qc.png            map + obs/model scatter
 filter_summary.txt           summary report
 
+PyGINVC only writes three columns (``lon lat los``) into sar_obs_*.xyz, so a
+plain run on a run directory has no unit vectors.  The script therefore
+searches for the original six-column .los automatically.  Pass --los (or
+--cfg) to pin a specific file; if nothing matches, the run aborts instead of
+writing a three-column file that SARData cannot load.
+
 Example
 -------
-python filter_near_fault_points.py \
+python filter_outlier_obs.py \
     --fault ../../../fault/trace_tdip_58_bdip30_decay10.faultgeom \
     --fault ../../../fault/seg2.faultgeom \
     --los ../../../data/insar/WX_downsample/T112A_los_lltnde.los
@@ -356,6 +374,226 @@ def same_grid(a, b, tol=2e-4):
     return float(d.max()) < tol
 
 
+def match_points(src_lon, src_lat, dst_lon, dst_lat, tol_km=0.05):
+    """For each source point, the index of the matching destination point.
+
+    The identity mapping is used when both sets have the same length and the
+    points coincide row by row; otherwise a KD-tree nearest-neighbour lookup
+    is done.  ``src`` and ``dst`` may therefore be either the .los file or a
+    SAR track.
+    """
+    src_lon = np.asarray(src_lon, float)
+    src_lat = np.asarray(src_lat, float)
+    dst_lon = np.asarray(dst_lon, float)
+    dst_lat = np.asarray(dst_lat, float)
+
+    if len(src_lon) == len(dst_lon):
+        lat0 = np.radians(np.mean(dst_lat))
+        d = np.hypot((src_lon - dst_lon) * np.cos(lat0), src_lat - dst_lat)
+        if d.max() < 2e-4:
+            return np.arange(len(src_lon))
+
+    from scipy.spatial import cKDTree
+    kx = KM_PER_DEG * np.cos(np.radians(np.mean(dst_lat)))
+    tree = cKDTree(np.c_[dst_lon * kx, dst_lat * KM_PER_DEG])
+    dd, idx = tree.query(np.c_[src_lon * kx, src_lat * KM_PER_DEG], k=1)
+    idx = np.asarray(idx)
+    if dd.max() > tol_km:
+        raise ValueError("points do not match within %.0f m"
+                         % (tol_km * 1000.0))
+    return idx
+
+
+def write_sar_clean(dst, lon, lat, los, unit, keep,
+                    header='Lon  Lat  LOS(mm)  E  N  U'):
+    """Write the cleaned SAR track as ``lon lat los E N U``.
+
+    This is the six-column form PyGINVC's ``SARData`` reads, so the cleaned
+    file can replace the source .los file in the inversion config directly.
+    """
+    keep = np.asarray(keep, dtype=bool)
+    data = np.column_stack((np.asarray(lon)[keep], np.asarray(lat)[keep],
+                            np.asarray(los)[keep],
+                            np.asarray(unit)[keep, 0],
+                            np.asarray(unit)[keep, 1],
+                            np.asarray(unit)[keep, 2]))
+    os.makedirs(os.path.dirname(os.path.abspath(dst)), exist_ok=True)
+    np.savetxt(dst, data,
+               fmt='%15.9f\t%15.9f\t%12.4f\t%15.10f\t%15.10f\t%15.10f',
+               header=header)
+
+
+# --------------------------------------------------------------------------
+# recovering the six-column source .los
+#
+# PyGINVC writes sar_obs_*.xyz with only lon lat los, but its SARData reader
+# hard-codes six columns (lon lat los E N U).  The unit vectors therefore
+# have to be recovered from the original .los file, either the one named by
+# --los/--cfg or one found near the run whose points match the observations.
+# --------------------------------------------------------------------------
+def read_los6(path):
+    """Return (arr, lines, idx) for a six-column .los file, else None."""
+    try:
+        arr, lines, idx, _ = read_table(path)
+    except (OSError, ValueError):
+        return None
+    if arr.ndim != 2 or arr.shape[1] < 6 or len(arr) == 0:
+        return None
+    return arr, lines, idx
+
+
+def match_los_file(path, obs_lon, obs_lat, cache=None):
+    """Return dict(path, arr, lines, idx, map) if path matches the obs grid.
+
+    ``map`` maps every observation to its row in the .los file, so
+    ``arr[map, 3:6]`` are the E N U unit vectors.
+    """
+    if cache is not None and path in cache:
+        rec = cache[path]
+    else:
+        rec = read_los6(path)
+        if cache is not None:
+            cache[path] = rec
+    if rec is None:
+        return None
+    arr, lines, idx = rec
+    try:
+        mapping = match_points(obs_lon, obs_lat, arr[:, 0], arr[:, 1])
+    except ValueError:
+        return None
+    return dict(path=path, arr=arr, lines=lines, idx=idx, map=mapping)
+
+
+def resolve_los(obs_lon, obs_lat, candidates, cache=None):
+    """First candidate that covers the observation points.
+
+    A file with exactly the same number of rows wins, since that is the
+    original .los the run was built from rather than another downsampling.
+    """
+    best = None
+    for path in candidates:
+        rec = match_los_file(path, obs_lon, obs_lat, cache)
+        if rec is None:
+            continue
+        exact = len(rec["arr"]) == len(obs_lon)
+        if best is None or (exact and len(best["arr"]) != len(obs_lon)):
+            best = rec
+        if exact:
+            break
+    return best
+
+
+def los_paths_from_cfg(cfg_path):
+    """InSAR file paths listed in a PyGINVC YAML config."""
+    try:
+        import yaml
+        with open(cfg_path, "r") as f:
+            cfg = yaml.safe_load(f) or {}
+    except (OSError, ImportError) as exc:
+        print("WARNING: cannot read %s: %s" % (cfg_path, exc))
+        return []
+    bases = []
+    d = os.path.dirname(os.path.abspath(cfg_path))
+    while True:
+        bases.append(d)
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    paths = []
+    for entry in cfg.get("insar") or []:
+        name = entry.get("file") if isinstance(entry, dict) else None
+        if not name:
+            continue
+        for cand in [name] + [os.path.join(b, name) for b in bases]:
+            if os.path.isfile(cand):
+                paths.append(os.path.abspath(cand))
+                break
+    return paths
+
+
+def search_root(datadir, levels=4):
+    """Ancestor directory to scan for the source .los / solutions.h5 files."""
+    root = os.path.abspath(datadir)
+    home = os.path.abspath(os.path.expanduser("~"))
+    stop = os.path.abspath(os.sep)
+    for _ in range(levels):
+        parent = os.path.dirname(root)
+        if parent == root or parent in (home, stop):
+            break
+        root = parent
+    return root
+
+
+def find_data_candidates(root, max_depth=8):
+    """(.los files, solutions.h5 files) below root, pruned of hidden dirs."""
+    los, h5 = [], []
+    for dirpath, dirnames, filenames in os.walk(root):
+        rel = os.path.relpath(dirpath, root)
+        depth = 0 if rel == "." else rel.count(os.sep) + 1
+        if depth >= max_depth:
+            dirnames[:] = []
+        dirnames[:] = [d for d in dirnames
+                       if not d.startswith(".") and d != "__pycache__"]
+        if "solutions.h5" in filenames:
+            h5.append(os.path.join(dirpath, "solutions.h5"))
+        for name in filenames:
+            if name.endswith(".los"):
+                los.append(os.path.join(dirpath, name))
+    return sorted(los), sorted(h5)
+
+
+def read_solution_units(path):
+    """E N U unit vectors and coordinates stored in solutions.h5."""
+    try:
+        import h5py
+        with h5py.File(path, "r") as h5:
+            if "obs/llh_sar" not in h5 or "obs/unit" not in h5:
+                return None
+            llh = np.asarray(h5["obs/llh_sar"][()], dtype=float)
+            unit = np.asarray(h5["obs/unit"][()], dtype=float)
+            sar_files = []
+            if "obs/sar_files" in h5:
+                raw = h5["obs/sar_files"][()]
+                sar_files = [x.decode() if isinstance(x, bytes) else str(x)
+                             for x in np.atleast_1d(raw)]
+    except (OSError, KeyError, ImportError):
+        return None
+    if (llh.ndim != 2 or llh.shape[0] != unit.shape[0]
+            or len(llh) == 0 or unit.shape[1] < 3):
+        return None
+    # llh_sar is stored as (lat, lon), same as SARData.llh_sar
+    return dict(path=path, lon=llh[:, 1], lat=llh[:, 0], unit=unit,
+                sar_files=sar_files)
+
+
+def match_solution_file(path, obs_lon, obs_lat):
+    """Return dict(path, unit, map, sar_files) if the h5 grid matches obs."""
+    rec = read_solution_units(path)
+    if rec is None:
+        return None
+    try:
+        mapping = match_points(obs_lon, obs_lat, rec["lon"], rec["lat"])
+    except ValueError:
+        return None
+    return dict(path=path, unit=rec["unit"], map=mapping,
+                sar_files=rec["sar_files"])
+
+
+def resolve_solution(obs_lon, obs_lat, candidates, cache=None):
+    """First solutions.h5 whose SAR points cover the observations."""
+    for path in candidates:
+        if cache is not None and path in cache:
+            rec = cache[path]
+        else:
+            rec = match_solution_file(path, obs_lon, obs_lat)
+            if cache is not None:
+                cache[path] = rec
+        if rec is not None:
+            return rec
+    return None
+
+
 # --------------------------------------------------------------------------
 # criteria
 # --------------------------------------------------------------------------
@@ -392,10 +630,22 @@ def main(argv=None):
                     help="minimum |model| for a sign flip, mm "
                          "(default: 30)")
     ap.add_argument("--los", default=None,
-                    help="optional source .los file to filter as well")
+                    help="optional source .los file to filter as well; its "
+                         "E N U unit vectors are attached to the cleaned SAR "
+                         "track (lon lat los E N U)")
     ap.add_argument("--los-track", type=int, default=1,
                     help="SAR track number the .los file corresponds to "
                          "(default: 1)")
+    ap.add_argument("--cfg", default=None,
+                    help="PyGINVC YAML config; its insar .los files are used "
+                         "to attach E N U unit vectors and are cleaned too")
+    ap.add_argument("--no-search-los", action="store_true",
+                    help="do not scan the directories around --datadir for "
+                         "the source six-column .los")
+    ap.add_argument("--allow-missing-unit", action="store_true",
+                    help="write lon lat los even when no E N U unit vectors "
+                         "can be recovered (such a file cannot be read by "
+                         "PyGINVC's SARData)")
     args = ap.parse_args(argv)
     if not args.fault and not args.solution:
         ap.error("give --fault and/or --solution")
@@ -403,6 +653,37 @@ def main(argv=None):
     datadir = os.path.abspath(args.datadir)
     outdir = os.path.abspath(args.outdir)
     os.makedirs(outdir, exist_ok=True)
+
+    cfg_los = los_paths_from_cfg(args.cfg) if args.cfg else []
+    los_cache = {}
+    sol_cache = {}
+    auto_data = {"root": None, "los": [], "h5": []}
+
+    def ensure_search():
+        """Lazily scan the tree around --datadir for .los / solutions.h5."""
+        if auto_data["root"] is None:
+            root = search_root(datadir)
+            auto_data["root"] = root
+            los, h5 = find_data_candidates(root)
+            # --no-search-los only disables the .los search; solutions.h5 is
+            # still used because it is the authoritative copy of the run data
+            auto_data["los"] = [] if args.no_search_los else los
+            auto_data["h5"] = h5
+            print("searching %d .los and %d solutions.h5 file(s) under %s"
+                  % (len(auto_data["los"]), len(h5), root))
+        return auto_data["root"]
+
+    def auto_los_paths():
+        ensure_search()
+        return auto_data["los"]
+
+    def auto_h5_paths():
+        """Nearby solutions.h5 files, preferring the same run-directory name."""
+        ensure_search()
+        own = os.path.basename(datadir.rstrip(os.sep))
+        paths = list(auto_data["h5"])
+        paths.sort(key=lambda p: os.path.basename(os.path.dirname(p)) != own)
+        return paths
 
     traces = []
     if args.solution:
@@ -446,7 +727,8 @@ def main(argv=None):
 
     removed_rows = []
     qc = dict(sar=[])
-    sar_clean = []          # (track, lon, lat, dist, flip, keep)
+    los_jobs = {}           # abs .los path -> (track, match record, remove)
+    sol_jobs = {}           # out basename -> rebuilt .los from solutions.h5
     outside_flips = []
 
     # ------------------------------------------------------------------
@@ -467,7 +749,10 @@ def main(argv=None):
             print("skip track %s: no %s" % (tag, mod_path))
             continue
 
-        obs, lines, idx, _ = read_table(obs_path, ncols=3)
+        obs, lines, idx, _ = read_table(obs_path)
+        if obs.shape[1] < 3:
+            raise ValueError("%s: need at least lon lat los columns"
+                             % obs_path)
         mod = read_table(mod_path, ncols=3)[0]
         if not same_grid(obs, mod):
             raise ValueError("track %s: obs and model grids differ" % tag)
@@ -497,14 +782,73 @@ def main(argv=None):
                 obs_sign=int(np.sign(obs_v[i])),
                 mod_sign=int(np.sign(mod_v[i]))))
 
+        # E N U (LOS unit vector): from the obs file itself when present,
+        # otherwise from a matching .los or from solutions.h5 (obs/llh_sar
+        # + obs/unit store exactly the points and look vectors of this run).
+        los_rec = None
+        sol_rec = None
+        if obs.shape[1] >= 6:
+            unit = obs[:, 3:6]
+        else:
+            pinned = [args.los] if (args.los is not None
+                                    and int(tag) == int(args.los_track)) else []
+            candidates = pinned + [p for p in cfg_los if p not in pinned]
+            los_rec = resolve_los(obs[:, 0], obs[:, 1], candidates,
+                                  los_cache)
+
+            # the run's own solutions.h5 first, then nearby ones
+            if los_rec is None:
+                own_h5 = os.path.join(datadir, "solutions.h5")
+                if os.path.exists(own_h5):
+                    sol_rec = resolve_solution(obs[:, 0], obs[:, 1],
+                                               [own_h5], sol_cache)
+            if los_rec is None and sol_rec is None:
+                los_rec = resolve_los(obs[:, 0], obs[:, 1],
+                                      auto_los_paths(), los_cache)
+            if los_rec is None and sol_rec is None:
+                sol_rec = resolve_solution(obs[:, 0], obs[:, 1],
+                                           auto_h5_paths(), sol_cache)
+
+            if los_rec is not None:
+                unit = los_rec["arr"][los_rec["map"], 3:6]
+            elif sol_rec is not None:
+                unit = sol_rec["unit"][sol_rec["map"]]
+            elif args.allow_missing_unit:
+                unit = None
+                print("WARNING: %s: no E N U unit vectors found; writing "
+                      "lon lat los only" % obs_path)
+            else:
+                raise RuntimeError(
+                    "%s: cannot recover the E N U unit vectors, and "
+                    "PyGINVC's SARData requires six columns (lon lat los "
+                    "E N U).  Pass --los FILE or --cfg CFG, or "
+                    "--allow-missing-unit to write three columns."
+                    % obs_path)
+
         dst = os.path.join(outdir, "sar_obs_%s.xyz" % tag)
-        write_filtered(obs_path, dst, lines, idx, ~remove)
+        if unit is not None:
+            write_sar_clean(dst, obs[:, 0], obs[:, 1], obs_v, unit, ~remove)
+        else:
+            write_filtered(obs_path, dst, lines, idx, ~remove)
+
+        if los_rec is not None:
+            los_jobs.setdefault(os.path.abspath(los_rec["path"]),
+                                (int(tag), los_rec, remove))
+        if sol_rec is not None:
+            name = (os.path.basename(sol_rec["sar_files"][0])
+                    if sol_rec["sar_files"] and sol_rec["sar_files"][0]
+                    else "")
+            name = name or "track%s_obs.los" % tag
+            taken = (name in sol_jobs
+                     or os.path.abspath(os.path.join(outdir, name)) in los_jobs)
+            if taken:
+                name = "track%s_%s" % (tag, name)
+            sol_jobs[name] = (int(tag), sol_rec, remove, obs, obs_v, unit)
 
         qc["sar"].append(dict(tag=tag, lon=obs[:, 0], lat=obs[:, 1],
                               dist=dist, flip=flip, near=near,
                               remove=remove, obs=obs_v, mod=mod_v,
                               res=res_v))
-        sar_clean.append((int(tag), obs_path, dst, obs, idx, lines, remove))
 
         n_near = int(near.sum())
         summary.append(
@@ -512,6 +856,14 @@ def main(argv=None):
             "%d removed"
             % (tag, len(obs), n_near, args.dist, int(flip.sum()),
                int(remove.sum())))
+        summary.append("  output columns : %s"
+                       % ("lon lat los E N U" if unit is not None
+                          else "lon lat los (no unit vectors)"))
+        if los_rec is not None:
+            summary.append("  unit vector    : %s" % los_rec["path"])
+        elif sol_rec is not None:
+            summary.append("  unit vector    : %s (obs/unit)"
+                           % sol_rec["path"])
         if n_near:
             dd = dist[near]
             summary.append("  band distance  : %.3f - %.3f km (median %.3f)"
@@ -606,49 +958,38 @@ def main(argv=None):
         summary.append("")
 
     # ------------------------------------------------------------------
-    # source .los (same points as one SAR track; match by coordinates)
+    # source .los files used for the unit vectors: write cleaned copies in
+    # the original six-column format with the removed rows dropped
     # ------------------------------------------------------------------
     los_removed = 0
-    if args.los:
-        track = args.los_track
-        rec = [r for r in sar_clean if r[0] == track]
-        if not rec:
-            print("WARNING: no SAR track %d to match %s" % (track, args.los))
-        else:
-            _, _, _, s_obs, _, _, s_remove = rec[0]
-            los, lines, idx, _ = read_table(args.los)
-            if len(los) == len(s_obs):
-                lat0 = np.radians(np.mean(s_obs[:, 1]))
-                d = np.hypot((los[:, 0] - s_obs[:, 0]) * np.cos(lat0),
-                             los[:, 1] - s_obs[:, 1])
-                if d.max() < 2e-4:
-                    mapping = np.arange(len(los))
-                else:
-                    mapping = None
-            else:
-                mapping = None
+    for los_path in sorted(los_jobs):
+        track, rec, s_remove = los_jobs[los_path]
+        los = rec["arr"]
+        # rec["map"] maps each SAR point to its .los row
+        los_remove = np.zeros(len(los), dtype=bool)
+        los_remove[rec["map"]] = s_remove
+        los_removed += int(los_remove.sum())
 
-            if mapping is None:
-                # nearest neighbour fallback
-                from scipy.spatial import cKDTree
-                kx = KM_PER_DEG * np.cos(np.radians(np.mean(s_obs[:, 1])))
-                tree = cKDTree(np.c_[s_obs[:, 0] * kx, s_obs[:, 1] * KM_PER_DEG])
-                dd, mapping = tree.query(
-                    np.c_[los[:, 0] * kx, los[:, 1] * KM_PER_DEG], k=1)
-                if dd.max() > 0.05:
-                    raise ValueError(
-                        "%s: no matching SAR points within 50 m" % args.los)
+        dst = os.path.join(outdir, os.path.basename(los_path))
+        write_filtered(los_path, dst, rec["lines"], rec["idx"], ~los_remove)
+        summary.append(
+            ".los %s: %d rows, %d removed (unit vectors for track %d)"
+            % (os.path.basename(los_path), len(los), int(los_remove.sum()),
+               track))
 
-            los_remove = np.zeros(len(los), dtype=bool)
-            los_remove[:] = s_remove[mapping]
-            los_removed = int(los_remove.sum())
-
-            dst = os.path.join(outdir, os.path.basename(args.los))
-            write_filtered(args.los, dst, lines, idx, ~los_remove)
-            summary.append(
-                ".los %s: %d rows, %d removed (matched to track %d)"
-                % (os.path.basename(args.los), len(los), los_removed, track))
-            summary.append("")
+    # when the look vectors came from solutions.h5 there is no source .los
+    # to copy, so rebuild the six-column file from obs + obs/unit instead
+    for name in sorted(sol_jobs):
+        track, _, s_remove, obs, obs_v, unit = sol_jobs[name]
+        dst = os.path.join(outdir, name)
+        write_sar_clean(dst, obs[:, 0], obs[:, 1], obs_v, unit, ~s_remove,
+                        header='lon lat los look_E look_N look_U')
+        los_removed += int(s_remove.sum())
+        summary.append(
+            ".los %s: %d rows, %d removed (rebuilt from solutions.h5, "
+            "track %d)" % (name, len(obs), int(s_remove.sum()), track))
+    if los_jobs or sol_jobs:
+        summary.append("")
 
     # ------------------------------------------------------------------
     # CSV report
@@ -768,7 +1109,7 @@ def main(argv=None):
         for tag, i, d, o, m in outside_flips:
             print("  track %s idx %d d=%.2f km obs=%.1f mod=%.1f"
                   % (tag, i, d, o, m))
-    if args.los:
+    if los_jobs:
         print("source .los rows removed: %d" % los_removed)
     print("cleaned observations: %s" % outdir)
 

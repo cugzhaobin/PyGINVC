@@ -50,6 +50,7 @@ dependencies = [
 "faultgeom2visco2pt5d.py" = "pyginvc.scripts.faultgeom2visco2pt5d:main"
 "faultgeom2vtk.py" = "pyginvc.scripts.faultgeom2vtk:main"
 "faultgeomResolution.py" = "pyginvc.scripts.faultgeomResolution:main"
+"filter_outlier_obs.py" = "pyginvc.scripts.filter_outlier_obs:main"
 "ForwardRun.py" = "pyginvc.scripts.ForwardRun:main"
 "fsp2faultgeom.py" = "pyginvc.scripts.fsp2faultgeom:main"
 "GeomOptRun.py" = "pyginvc.scripts.GeomOptRun:main"
