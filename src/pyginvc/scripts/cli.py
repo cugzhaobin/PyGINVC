@@ -112,12 +112,6 @@ COMMANDS = {
     'geom-opt': (
         'pyginvc.scripts.GeomOptRun', 'main',
         'Optimal fault geometry estimation from YAML', 'invert'),
-    'block': (
-        'pyginvc.scripts.block_inversion', 'main',
-        'Block-model motion inversion from GPS', 'invert'),
-    'block-backslip': (
-        'pyginvc.scripts.block_backslip_inversion', 'main',
-        'Block-model backslip (coupling) inversion from YAML', 'invert'),
 
     'plot-faultgeom': (
         'pyginvc.scripts.plot_faultgeom', 'main',

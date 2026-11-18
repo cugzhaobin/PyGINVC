@@ -18,7 +18,11 @@ and both amplitudes are above the noise.
 The surface trace is read from the .faultgeom file itself -- no separate
 detailed trace (e.g. GaoFen_Fault7.txt) is used.  For a PyGINVC fault file the
 first ``ndeps`` rows are the surface patches, and their shallow edges
-(SLon,SLat)->(ELon,ELat) form the trace.
+(SLon,SLat)->(ELon,ELat) form the trace.  A combined file with several faults
+is split into its depth blocks automatically.  For a triangular fault give
+``--solution solutions.h5`` instead: the .tri slip files store only node
+indices, so the trace is built from ``flt/vertex_llh`` and ``flt/element``
+(the boundary edge chain whose nodes sit at the surface).
 
 Inputs (default names, all relative to --datadir)
 ------------------------------------------------
@@ -75,53 +79,168 @@ def _read_header_int(path, key):
     return int(m.group(1)) if m else None
 
 
-def read_fault_trace(path):
-    """Surface trace of a PyGINVC .faultgeom file.
+def read_fault_traces(path):
+    """Surface traces of a PyGINVC .faultgeom file.
 
-    Rows are ordered as ndeps blocks of nsegs patches.  The first block is at
-    the surface; each patch contributes its shallow edge
-    (lon0,lat0)->(lon1,lat1).  Returns the polyline nodes (lon, lat) plus a
-    small info dict.
+    The rows may hold one fault (ndeps blocks of nsegs patches) or several
+    faults concatenated (PyGINVC's combined ``slipmodel_001.faultgeom``);
+    a new fault block is detected where the row depth drops back.  Each
+    fault contributes its surface row: the shallow edges
+    (lon0,lat0)->(lon1,lat1) of the first nsegs rows.  Returns a list of
+    (lon, lat, info) tuples.
     """
-    nsegs = _read_header_int(path, "nsegs")
-    ndeps = _read_header_int(path, "ndeps")
+    nsegs_h = _read_header_int(path, "nsegs")
+    ndeps_h = _read_header_int(path, "ndeps")
 
     data = np.loadtxt(path, comments="#")
     if data.ndim != 2 or data.shape[1] < 7:
         raise ValueError("%s: not a faultgeom table" % path)
 
-    if nsegs is None:
-        # fall back: count rows in the first constant-depth block
-        dep = data[:, 1]
-        nsegs = int(np.sum(np.isclose(dep, dep[0])))
-    if nsegs <= 0:
-        raise ValueError("%s: could not determine nsegs" % path)
+    dep = np.round(data[:, 1], 4)
+    cuts = [0] + list(np.where(np.diff(dep) < -1e-6)[0] + 1) + [len(data)]
 
-    surf = data[:nsegs]
-    lon = np.r_[surf[:, 4], surf[-1, 6]]
-    lat = np.r_[surf[:, 3], surf[-1, 5]]
+    traces = []
+    for a, b in zip(cuts[:-1], cuts[1:]):
+        blk = data[a:b]
+        nsegs = nsegs_h
+        if not nsegs or len(blk) % nsegs:
+            nsegs = int(np.sum(np.isclose(np.round(blk[:, 1], 4),
+                                          np.round(blk[0, 1], 4))))
+        if nsegs <= 0 or len(blk) % nsegs:
+            raise ValueError("%s: could not determine the patch grid"
+                             % path)
+        ndeps = len(blk) // nsegs
+        if ndeps_h and ndeps_h * nsegs == len(blk):
+            ndeps = ndeps_h
 
-    # continuity: the end of patch i must equal the start of patch i+1
-    coslat = np.cos(np.radians(np.mean(lat)))
-    jump = np.hypot((surf[:-1, 6] - surf[1:, 4]) * coslat,
-                    surf[:-1, 5] - surf[1:, 3]) * KM_PER_DEG
-    gap = float(jump.max()) if len(jump) else 0.0
-    if gap > 0.05:
-        print("WARNING: %s: surface row is discontinuous by %.1f km; "
-              "check row order" % (path, gap))
+        surf = blk[:nsegs]
+        lon = np.r_[surf[:, 4], surf[-1, 6]]
+        lat = np.r_[surf[:, 3], surf[-1, 5]]
 
-    info = dict(path=path, nsegs=nsegs, ndeps=ndeps, nnodes=len(lon),
-                jump_max_km=gap)
-    return lon, lat, info
+        # continuity: end of patch i must equal start of patch i+1
+        coslat = np.cos(np.radians(np.mean(lat)))
+        jump = np.hypot((surf[:-1, 6] - surf[1:, 4]) * coslat,
+                        surf[:-1, 5] - surf[1:, 3]) * KM_PER_DEG
+        gap = float(jump.max()) if len(jump) else 0.0
+        if gap > 0.05:
+            print("WARNING: %s: surface row is discontinuous by %.1f km; "
+                  "check row order" % (path, gap))
+
+        info = dict(path=path, nsegs=nsegs, ndeps=ndeps, nnodes=len(lon),
+                    jump_max_km=gap)
+        traces.append((lon, lat, info))
+    return traces
+
+
+def read_fault_trace(path):
+    """First surface trace of a .faultgeom file (single-fault files)."""
+    return read_fault_traces(path)[0]
+
+
+def read_triangle_traces(solutionfile):
+    """Surface traces of a triangular fault from a solutions.h5 file.
+
+    The ``*.tri`` slip-model files only store node indices and slip, so the
+    vertex coordinates are taken from the solution file (``flt/vertex_llh``,
+    columns lon/lat/depth, and ``flt/element``, 1-based triangles).  The
+    surface trace is the boundary edge chain whose two end nodes sit at the
+    minimum depth; several disconnected chains yield several traces.
+    Returns a list of (lon, lat, info) tuples.
+    """
+    import h5py
+    from collections import Counter, defaultdict
+
+    with h5py.File(solutionfile, "r") as h5:
+        flttype = h5["flt/flttype"][()]
+        if isinstance(flttype, bytes):
+            flttype = flttype.decode()
+        if flttype != "triangle":
+            raise ValueError("%s: fault type is %r, not triangle"
+                             % (solutionfile, flttype))
+        llh = np.asarray(h5["flt/vertex_llh"][()], float)   # lat lon up
+        elem = np.asarray(h5["flt/element"][()], dtype=int) - 1
+
+    edges = Counter()
+    for tri in elem:
+        for u, v in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])):
+            edges[(min(u, v), max(u, v))] += 1
+
+    # vertex_llh[:, 2] is the up coordinate (positive up, 0 at the surface),
+    # so the surface nodes sit at the MAXIMUM value.
+    zsurf = llh[:, 2].max()
+    surf = [e for e, n in edges.items() if n == 1
+            and abs(llh[e[0], 2] - zsurf) < 1e-3
+            and abs(llh[e[1], 2] - zsurf) < 1e-3]
+    if not surf:
+        raise ValueError("%s: no surface boundary edges found"
+                         % solutionfile)
+
+    # order the boundary edges into open/closed chains
+    adj = defaultdict(list)
+    for u, v in surf:
+        adj[u].append(v)
+        adj[v].append(u)
+
+    seen = set()
+    chains = []
+    ends = [n for n, nb in adj.items() if len(nb) == 1]
+    starts = ends + [n for n in adj if n not in ends]
+    for start in starts:
+        if start in seen:
+            continue
+        chain = [start]
+        seen.add(start)
+        cur, prev = start, None
+        while True:
+            nxt = [n for n in adj[cur] if n != prev and n not in seen]
+            if not nxt:
+                break
+            prev, cur = cur, nxt[0]
+            chain.append(cur)
+            seen.add(cur)
+        if len(chain) > 1:
+            chains.append(chain)
+
+    traces = []
+    for chain in chains:
+        lat = llh[chain, 0]
+        lon = llh[chain, 1]
+        coslat = np.cos(np.radians(np.mean(lat)))
+        jump = np.hypot(np.diff(lon) * coslat, np.diff(lat)) * KM_PER_DEG
+        info = dict(path=solutionfile, nsegs=len(chain) - 1, ndeps="tri",
+                    nnodes=len(chain),
+                    jump_max_km=float(jump.max()) if len(jump) else 0.0)
+        traces.append((lon, lat, info))
+    return traces
 
 
 class FaultTrace:
     """Nearest-segment distance and hanging/foot-wall side of a polyline."""
 
-    def __init__(self, path, name=None):
+    def __init__(self, path, name=None, block=0):
         self.path = path
-        self.name = name or os.path.splitext(os.path.basename(path))[0]
-        self.lon, self.lat, self.info = read_fault_trace(path)
+        traces = read_fault_traces(path)
+        self.lon, self.lat, self.info = traces[block]
+        if name is None:
+            base = os.path.splitext(os.path.basename(path))[0]
+            name = base + ('_f%d' % (block + 1) if len(traces) > 1 else '')
+        self.name = name
+        self._setup()
+
+    @classmethod
+    def from_polyline(cls, lon, lat, info, name, path=""):
+        """Build a trace from explicit polyline arrays (triangular faults)."""
+        self = cls.__new__(cls)
+        self.path = path
+        self.name = name
+        self.lon = np.asarray(lon, float)
+        self.lat = np.asarray(lat, float)
+        self.info = info
+        self._setup()
+        return self
+
+    def _setup(self):
+        self.lat0 = np.radians(np.mean(self.lat))
 
         self.lat0 = np.radians(np.mean(self.lat))
         self.kx = KM_PER_DEG * np.cos(self.lat0)
@@ -251,8 +370,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(
         description="Remove near-fault observations whose sign is opposite "
                     "to the model prediction.")
-    ap.add_argument("--fault", action="append", required=True,
+    ap.add_argument("--fault", action="append", default=None,
                     help="PyGINVC .faultgeom file (repeat for several faults)")
+    ap.add_argument("--solution", default=None,
+                    help="solutions.h5 of a triangular-fault run; the surface "
+                         "trace is taken from flt/vertex_llh + flt/element "
+                         "(the .tri slip files store only node indices)")
     ap.add_argument("--datadir", default=".",
                     help="directory holding the observation files (default: .)")
     ap.add_argument("--modeldir", default="sm000",
@@ -274,14 +397,37 @@ def main(argv=None):
                     help="SAR track number the .los file corresponds to "
                          "(default: 1)")
     args = ap.parse_args(argv)
+    if not args.fault and not args.solution:
+        ap.error("give --fault and/or --solution")
 
     datadir = os.path.abspath(args.datadir)
     outdir = os.path.abspath(args.outdir)
     os.makedirs(outdir, exist_ok=True)
 
-    traces = [FaultTrace(p) for p in args.fault]
+    traces = []
+    if args.solution:
+        import h5py
+        with h5py.File(args.solution, "r") as h5:
+            ftype = h5["flt/flttype"][()]
+            if isinstance(ftype, bytes):
+                ftype = ftype.decode()
+        if ftype == "triangle":
+            tri = read_triangle_traces(args.solution)
+            for k, (lon, lat, info) in enumerate(tri):
+                name = ("triangle" if len(tri) == 1
+                        else "triangle_%d" % (k + 1))
+                traces.append(FaultTrace.from_polyline(
+                    lon, lat, info, name, args.solution))
+        else:
+            print("--solution: fault type is %r (not triangle); the "
+                  "rectangular traces come from --fault" % ftype)
+
+    for p in args.fault or []:
+        nblock = len(read_fault_traces(p))
+        for ib in range(nblock):
+            traces.append(FaultTrace(p, block=ib))
     for tr in traces:
-        print("fault %-12s %3d nodes, nsegs=%d ndeps=%d, max node gap %.2f km"
+        print("fault %-12s %3d nodes, nsegs=%s ndeps=%s, max node gap %.2f km"
               % (tr.name, tr.info["nnodes"], tr.info["nsegs"],
                  tr.info["ndeps"], tr.info["jump_max_km"]))
 
@@ -293,7 +439,7 @@ def main(argv=None):
     summary.append("")
     summary.append("faults:")
     for tr in traces:
-        summary.append("  %-12s %s  (%d nodes, nsegs=%d, ndeps=%d)"
+        summary.append("  %-12s %s  (%d nodes, nsegs=%s, ndeps=%s)"
                        % (tr.name, tr.path, tr.info["nnodes"],
                           tr.info["nsegs"], tr.info["ndeps"]))
     summary.append("")
