@@ -120,7 +120,9 @@ class GenBlockBackslipInversion(BaseInversion):
                 res       = optimize.lsq_linear(G2I, d2I, (bl, bu), method='bvls', lsmr_tol='auto')
                 x         = res.x
                 status[i] = res.status
-                if res.status not in (1, 2):
+                # 1/2 = converged, 3 = the unconstrained solution is optimal
+                # (no bound active), which is also a valid optimum.
+                if res.status not in (1, 2, 3):
                     logging.warning('BVLS did not converge at smoothing factor %g: '
                                     'status=%d (%s).  status 0 = iteration limit, '
                                     '-1 = no progress; the result below is NOT a '

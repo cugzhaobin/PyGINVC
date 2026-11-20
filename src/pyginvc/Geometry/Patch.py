@@ -103,7 +103,7 @@ class Fault(object):
                 'Fault geometry file is empty: %s' % self.faultfile)
         if geom.ndim == 1:
             geom = geom.reshape((1, len(geom)))
-        if geom.shape[1] != 10:
+        if geom.shape[1] < 10:
             raise ValueError(
                 'Fault geometry file must have 10 columns, got %d: %s'
                 % (geom.shape[1], self.faultfile))

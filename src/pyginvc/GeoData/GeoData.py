@@ -204,17 +204,26 @@ class GeoData:
             logging.info('Block index for GPS is null')
             return
         else:
-            obs, llh, cov = [], [], []
+            obs, llh, cov, sta = [], [], [], []
+            # Station names are optional.  Reorder them together with the
+            # velocities, otherwise every output that labels a station would
+            # silently attach the wrong name after process_data().  When the
+            # input had no names, leave the array empty.
+            has_names = self.station_gps.size == len(gps_blk_idx)
             for i in np.unique(gps_blk_idx):
                 if i < 0: continue
                 idx = (gps_blk_idx==i)
                 obs.append(self.d_gps.reshape(-1,self.ndim)[idx])
                 llh.append(self.llh_gps[idx])
                 cov.append(self.cov_gps.reshape(-1,self.ndim)[idx])
+                if has_names:
+                    sta.append(self.station_gps[idx])
 
             self.llh_gps  = np.vstack(llh)
             self.d_gps    = np.vstack(obs).flatten()
             self.cov_gps  = np.vstack(cov).flatten()
+            if has_names:
+                self.station_gps = np.hstack(sta)
 
         if len(sar_blk_idx) == 0:
             logging.info('Block index for SAR is null')
